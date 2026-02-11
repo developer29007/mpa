@@ -27,6 +27,8 @@ class OrderBook:
         self.top_of_book = TopOfBook(stock)
         self.bids = SortedDict()
         self.asks = SortedDict()
+        self.last_trade: Optional[float] = None
+        self.last_trade_timestamp: int = 0
         self.trade_listeners: [TradeListener] = []
         self.tob_listeners: [TobListener] = []
 
@@ -39,6 +41,10 @@ class OrderBook:
             self.tob_listeners.append(listener)
 
     def notify_trade(self, trade: Trade):
+        self.last_trade = trade.price
+        self.last_trade_timestamp = trade.timestamp_ns
+        self.top_of_book.last_trade = trade.price
+        self.top_of_book.last_trade_timestamp = trade.timestamp_ns
         for trade_listener in self.trade_listeners:
             trade_listener.on_trade(trade)
 
@@ -47,10 +53,12 @@ class OrderBook:
         ask_price = f"{self.top_of_book.ask_price / 10000:.2f}" if self.top_of_book.ask_price else ""
         bid_size = f"{self.top_of_book.bid_size}"
         ask_size = f"{self.top_of_book.ask_size}"
-        print(f"{nanos_to_ms_str(self.timestamp_ns)} {self.stock} {bid_size:>10} {bid_price:>10} | {ask_price:<10} {ask_size}")
+        last = f"Last: {self.last_trade:.2f} @ {nanos_to_ms_str(self.last_trade_timestamp)}" if self.last_trade else ""
+        print(f"{nanos_to_ms_str(self.timestamp_ns)} {self.stock} {bid_size:>10} {bid_price:>10} | {ask_price:<10} {ask_size:<10} {last}")
 
     def print_book(self):
-        print(f"{self.stock} OrderBook at {TimeUtil.nanos_to_ms_str(self.timestamp_ns)}")
+        last = f"  Last: {self.last_trade:.2f} @ {nanos_to_ms_str(self.last_trade_timestamp)}" if self.last_trade else ""
+        print(f"{self.stock} OrderBook at {nanos_to_ms_str(self.timestamp_ns)}{last}")
         for bid_level, ask_level in zip_longest(reversed(self.bids.values()), self.asks.values()):
             bid_orders = f"({len(bid_level.orders)})" if bid_level else ''
             bid_size = f"{bid_level.size}" if bid_level else ''

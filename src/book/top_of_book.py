@@ -11,4 +11,6 @@ class TopOfBook:
     bid_size: int = 0
     ask_price: Optional[int] = None
     ask_size: int = 0
+    last_trade: Optional[float] = None
+    last_trade_timestamp: int = 0
 
