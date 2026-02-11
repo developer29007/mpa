@@ -1,0 +1,27 @@
+[project]
+name = "mpa"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Neeraj Bajaj", email = "neeraj.bajaj@gmail.com"},
+]
+dependencies = ["sortedcontainers>=2.4.0"]
+requires-python = "==3.12.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.build]
+package-dir = "src"
+includes = ["book", "itch"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
