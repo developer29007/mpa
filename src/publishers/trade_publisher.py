@@ -7,9 +7,6 @@ from publishers.kafka_publisher import KafkaPublisher
 
 TRADE_FORMAT = '>Q8sIdcc4s8sQI'
 TRADE_MSG_TYPE = 'T'
-EPOCH = datetime.date(1970, 1, 1)
-
-
 def _serialize_trade(trade: Trade) -> bytes:
     sec_id = trade.sec_id.encode('ascii').ljust(8)
     side = trade.side.encode('ascii') if trade.side else b' '
@@ -17,7 +14,7 @@ def _serialize_trade(trade: Trade) -> bytes:
     exch_id = trade.exch_id.encode('ascii').ljust(4)
     src = trade.src.encode('ascii').ljust(8)
     exch_match_id = int(trade.exch_match_id) if trade.exch_match_id else 0
-    trade_date_days = (trade.trade_date - EPOCH).days if trade.trade_date else 0
+    trade_date_int = trade.trade_date.year * 10000 + trade.trade_date.month * 100 + trade.trade_date.day
     return struct.pack(
         TRADE_FORMAT,
         trade.timestamp_ns,
@@ -29,7 +26,7 @@ def _serialize_trade(trade: Trade) -> bytes:
         exch_id,
         src,
         exch_match_id,
-        trade_date_days,
+        trade_date_int,
     )
 
 

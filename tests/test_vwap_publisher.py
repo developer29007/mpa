@@ -15,7 +15,7 @@ def _unpack_vwap(data: bytes):
 class TestVwapSerializationRoundTrip:
     def test_bucket_with_trades(self):
         bucket = VwapBucket(250)
-        trade = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E")
+        trade = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E", trade_date=datetime.date(2024, 1, 15))
         bucket.add_trade(trade)
 
         data = _serialize_vwap(1_000_000, "AAPL", bucket)
@@ -58,7 +58,7 @@ class TestVwapPublisherIntegration:
             bucket_intervals=[250, 1000, 5000],
         )
 
-        trade = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E")
+        trade = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E", trade_date=datetime.date(2024, 1, 15))
         publisher.on_trade(trade)
 
         assert "AAPL" in publisher.calculators
@@ -73,8 +73,8 @@ class TestVwapPublisherIntegration:
             bucket_intervals=[250, 1000],
         )
 
-        trade_aapl = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E")
-        trade_tsla = Trade(timestamp_ns=2_000_000, sec_id="TSLA", shares=50, price=200.0, side="S", type="E")
+        trade_aapl = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E", trade_date=datetime.date(2024, 1, 15))
+        trade_tsla = Trade(timestamp_ns=2_000_000, sec_id="TSLA", shares=50, price=200.0, side="S", type="E", trade_date=datetime.date(2024, 1, 15))
         publisher.on_trade(trade_aapl)
         publisher.on_trade(trade_tsla)
 

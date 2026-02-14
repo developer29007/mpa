@@ -1,6 +1,5 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional
 
 # Execution
 TRADE_TYPE_EXECUTION = "E"
@@ -28,8 +27,8 @@ class Trade:
     price: float
     side: str
     type: str
+    trade_date: datetime.date
     # Optional metadata (defaults for lightweight construction)
     exch_id: str = ""
     src: str = ""
     exch_match_id: str = ""
-    trade_date: Optional[datetime.date] = None

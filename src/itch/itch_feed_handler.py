@@ -1,4 +1,4 @@
-from datetime import datetime
+import datetime
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -27,7 +27,7 @@ def get_trade_type(cross_type: str):
 
 class ItchFeedHandler(ItchListener):
 
-    def __init__(self, exch_id: str = "", src: str = "", trade_date: Optional[datetime.date] = None):
+    def __init__(self, trade_date: datetime.date, exch_id: str = "", src: str = ""):
         self.order_map: dict[int, Order] = {}
         self.book_map: dict[str, OrderBook] = {}
         self.tob_map: dict[str, TopOfBook] = {}

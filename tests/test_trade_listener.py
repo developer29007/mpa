@@ -6,6 +6,8 @@ from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_EXECUTION_WITH_PR
 from book.trade_listener import TradeListener
 from itch.itch_feed_handler import ItchFeedHandler
 
+TEST_DATE = datetime.date(2024, 1, 15)
+
 
 class MockTradeListener(TradeListener):
     def __init__(self):
@@ -24,7 +26,7 @@ def _add_order(fh: ItchFeedHandler, order_id: int, stock: str, side: str, shares
 class TestOrderExecutedTrade:
     def test_execution_fires_trade_with_order_price(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "AAPL", "B", 100, 1500000)
@@ -42,7 +44,7 @@ class TestOrderExecutedTrade:
 
     def test_execution_reduces_book_quantity(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "AAPL", "B", 100, 1500000)
@@ -56,7 +58,7 @@ class TestOrderExecutedTrade:
 class TestOrderExecutedWithPricePrintable:
     def test_printable_y_fires_trade_with_exec_price(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "AAPL", "S", 100, 1500000)
@@ -73,7 +75,7 @@ class TestOrderExecutedWithPricePrintable:
 
     def test_printable_n_no_trade_fired(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "AAPL", "B", 100, 1500000)
@@ -83,7 +85,7 @@ class TestOrderExecutedWithPricePrintable:
 
     def test_printable_n_still_updates_book(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "AAPL", "B", 100, 1500000)
@@ -97,7 +99,7 @@ class TestOrderExecutedWithPricePrintable:
 class TestNonCrossTrade:
     def test_p_message_fires_trade(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         fh.handle_non_cross_trade(12345, "B", 200, "TSLA", 7500000, 77777, 5000)
@@ -113,7 +115,7 @@ class TestNonCrossTrade:
 
     def test_p_message_no_book_modification(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "TSLA", "B", 100, 7500000)
@@ -127,7 +129,7 @@ class TestNonCrossTrade:
 class TestCrossTrade:
     def test_q_message_fires_trade(self):
         listener = MockTradeListener()
-        fh = ItchFeedHandler()
+        fh = ItchFeedHandler(trade_date=TEST_DATE)
         fh.register_trade_listener(listener)
 
         fh.handle_cross_trade(5000, "MSFT", 2500000, 66666, "O", 6000)
@@ -146,7 +148,7 @@ class TestMetadataPropagation:
     def test_session_metadata_appears_in_trade(self):
         listener = MockTradeListener()
         td = datetime.date(2024, 1, 15)
-        fh = ItchFeedHandler(exch_id="XNAS", src="itch_historical", trade_date=td)
+        fh = ItchFeedHandler(trade_date=td, exch_id="XNAS", src="itch_historical")
         fh.register_trade_listener(listener)
 
         _add_order(fh, 1, "AAPL", "B", 100, 1500000)
@@ -160,7 +162,7 @@ class TestMetadataPropagation:
     def test_metadata_on_non_cross_trade(self):
         listener = MockTradeListener()
         td = datetime.date(2024, 6, 1)
-        fh = ItchFeedHandler(exch_id="XNAS", src="live", trade_date=td)
+        fh = ItchFeedHandler(trade_date=td, exch_id="XNAS", src="live")
         fh.register_trade_listener(listener)
 
         fh.handle_non_cross_trade(1, "S", 100, "GOOG", 1000000, 11111, 7000)
@@ -173,7 +175,7 @@ class TestMetadataPropagation:
     def test_metadata_on_cross_trade(self):
         listener = MockTradeListener()
         td = datetime.date(2024, 6, 1)
-        fh = ItchFeedHandler(exch_id="XNAS", src="live", trade_date=td)
+        fh = ItchFeedHandler(trade_date=td, exch_id="XNAS", src="live")
         fh.register_trade_listener(listener)
 
         fh.handle_cross_trade(500, "GOOG", 1000000, 22222, "C", 8000)

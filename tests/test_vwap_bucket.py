@@ -1,10 +1,14 @@
+import datetime
+
 import pytest
 from analytics.VwapBucket import VwapBucket
 from book.trade import Trade
 
+TEST_DATE = datetime.date(2024, 1, 15)
+
 
 def make_trade(timestamp_ns: int, shares: int, price: float) -> Trade:
-    return Trade(timestamp_ns=timestamp_ns, sec_id="TEST", shares=shares, price=price, side="B", type="regular")
+    return Trade(timestamp_ns=timestamp_ns, sec_id="TEST", shares=shares, price=price, side="B", type="regular", trade_date=TEST_DATE)
 
 
 class TestVwapBucketEmpty:

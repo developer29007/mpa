@@ -2,7 +2,7 @@ import datetime
 import struct
 
 from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_CLOSE_CROSS
-from publishers.trade_publisher import _serialize_trade, TRADE_FORMAT, EPOCH
+from publishers.trade_publisher import _serialize_trade, TRADE_FORMAT
 
 
 def _unpack_trade(data: bytes):
@@ -36,7 +36,7 @@ class TestTradeSerializationRoundTrip:
         assert exch_id == b'XNAS'
         assert src == b'itch    '
         assert match_id == 99999
-        assert td_days == (td - EPOCH).days
+        assert td_days == 20240115
 
     def test_empty_optionals(self):
         trade = Trade(
@@ -46,6 +46,7 @@ class TestTradeSerializationRoundTrip:
             price=10.0,
             side="S",
             type="N",
+            trade_date=datetime.date(2024, 1, 15),
         )
         data = _serialize_trade(trade)
         ts, sec_id, shares, price, side, ttype, exch_id, src, match_id, td_days = _unpack_trade(data)
@@ -59,7 +60,7 @@ class TestTradeSerializationRoundTrip:
         assert exch_id == b'    '
         assert src == b'        '
         assert match_id == 0
-        assert td_days == 0
+        assert td_days == 20240115
 
     def test_cross_trade_empty_side(self):
         trade = Trade(
@@ -83,6 +84,7 @@ class TestTradeSerializationSize:
     def test_payload_is_54_bytes(self):
         trade = Trade(
             timestamp_ns=0, sec_id="TEST", shares=1, price=1.0, side="B", type="E",
+            trade_date=datetime.date(2024, 1, 15),
         )
         data = _serialize_trade(trade)
         assert len(data) == struct.calcsize(TRADE_FORMAT)
