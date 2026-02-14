@@ -14,15 +14,6 @@ from itch.itch_listener import ItchListener
 from itch.itch_parser import ItchParser
 
 
-def print_books(*stocks):
-    for stock in stocks:
-        stock_book = feedHandler.book_map.get(stock)
-        if stock_book:
-            stock_book.print_book()
-            # stock_tob = stock_book.get_top_of_book()
-            # print(f"{stock}: {stock_tob}")
-
-
 def get_trade_type(cross_type: str):
     if cross_type == 'O':
         return TRADE_TYPE_OPEN_CROSS
@@ -41,7 +32,7 @@ class ItchFeedHandler(ItchListener):
         self.book_map: dict[str, OrderBook] = {}
         self.tob_map: dict[str, TopOfBook] = {}
         self.tob_publisher: Optional[TopOfBookPublisher] = None
-        self.trade_listener: Optional[TradeListener] = None
+        self.trade_listeners: list[TradeListener] = []
         self.timestamp = 0
         # Session metadata
         self.exch_id = exch_id
@@ -62,7 +53,7 @@ class ItchFeedHandler(ItchListener):
         self.tob_publisher = tob_publisher
 
     def register_trade_listener(self, listener: TradeListener):
-        self.trade_listener = listener
+        self.trade_listeners.append(listener)
         for book in self.book_map.values():
             book.register_trade_listener(listener)
 
@@ -70,8 +61,8 @@ class ItchFeedHandler(ItchListener):
         book = self.book_map.get(stock)
         if book is None:
             book = OrderBook(stock)
-            if self.trade_listener:
-                book.register_trade_listener(self.trade_listener)
+            for listener in self.trade_listeners:
+                book.register_trade_listener(listener)
             self.book_map[stock] = book
         return book
 
@@ -284,45 +275,3 @@ class ItchFeedHandler(ItchListener):
     def on_cross_trade(self, shares: int, stock: str, cross_price: int, match_number: int,
                        cross_type: str, timestamp_ns: int) -> None:
         self.handle_cross_trade(shares, stock, cross_price, match_number, cross_type, timestamp_ns)
-
-
-if __name__ == "__main__":
-    biz_date = '10302019'
-    date_obj = datetime.strptime(biz_date, '%m%d%Y').date()
-    itch_file = './data/' + biz_date + '.NASDAQ_ITCH50'
-    print(f"itch_file: {itch_file}")
-    itch_file_path = Path(itch_file)
-    feedHandler = ItchFeedHandler(trade_date=date_obj)
-
-    # TODO: Write a Trade Publisher that writes to Kafka topic (trade-analytics-{trade date}). MsgFormat [msgType][msgSize][msgBytes]
-    # TODO: Write a Trade Publisher that writes to Unkaf (sessionId: trade-analytics-{trade date}. MsgFormat [msgType][msgSize][msgBytes]
-    # TradePublisher is a Trade Listener.
-
-    # VWap Publisher is a Trade Listener. can publish vwap. VwapCalculator can publish vwap
-    # TopOfBook listener -> TopOfBook publisher. Published every second when top-of-book is changed or when last trade
-
-
-    batch = 1000
-    total_msgs = 1_000_000
-    with itch_file_path.open('rb') as data:
-        msg_processed = 0
-        last_pub_timestamp = 0
-        while True:
-            if not feedHandler.parser.decode(data, batch):
-                print(f"Finished processing {itch_file_path}")
-                break
-
-            time_lapsed = feedHandler.timestamp - last_pub_timestamp
-            # 60 sec
-            if time_lapsed > 60 * 1000_000_000:
-                for stock, order_book in feedHandler.book_map.items():
-                    if stock in ('AAPL', 'TSLA', 'HSBC'):
-                        order_book.print_tob()
-                    order_book.notify_tob_change()
-
-            msg_processed += batch
-            if msg_processed >= total_msgs:
-                break
-
-            if msg_processed % 100_000 == 0:
-                print_books('AAPL', 'TSLA', 'HSBC')

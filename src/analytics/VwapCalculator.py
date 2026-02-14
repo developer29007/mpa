@@ -26,5 +26,5 @@ class VwapCalculator:
             self.buckets[bucket_interval] = VwapBucket(bucket_interval)
 
     def add_trade(self, trade: Trade):
-        for bucket in self.buckets:
+        for bucket in self.buckets.values():
             bucket.add_trade(trade)

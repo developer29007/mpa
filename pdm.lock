@@ -5,7 +5,7 @@
 groups = ["default", "dev"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:56311d650e8207fc67d9e28289afc757f269750cf3cac68ef6f846712c3fed77"
+content_hash = "sha256:f054a7a1e0d381087e927d5e763e331642e292e81408ae7f846cd7b1d17b3406"
 
 [[metadata.targets]]
 requires_python = "==3.12.*"
@@ -20,6 +20,21 @@ marker = "sys_platform == \"win32\""
 files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
+]
+
+[[package]]
+name = "confluent-kafka"
+version = "2.13.0"
+requires_python = ">=3.8"
+summary = "Confluent's Python client for Apache Kafka"
+groups = ["default"]
+files = [
+    {file = "confluent_kafka-2.13.0-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:a69263f22a8c53c7d55067e7795ed49d22c374b9473df91982816a0448e6d242"},
+    {file = "confluent_kafka-2.13.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:0945c7f529e66a18aa19135aa18bfdc239ca6c0f6df6ca9b05a793d9b76c1c4b"},
+    {file = "confluent_kafka-2.13.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:321037a64c02acb13b5bde193b461c0514dca236a9f5236c847a3240313c297f"},
+    {file = "confluent_kafka-2.13.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:d7a71ca8fd42d3eefa22eb202e7fc8a419e0fd4e3b59862918c21f4d1074f0c5"},
+    {file = "confluent_kafka-2.13.0-cp312-cp312-win_amd64.whl", hash = "sha256:37dddb1b92829b8862bc4fbce07789a79b73aa31eca413f3db187721a09975ff"},
+    {file = "confluent_kafka-2.13.0.tar.gz", hash = "sha256:eff7a4391a9e6d4a33f0c05d0935b200a7463834f1f5d6e6253be318f910babd"},
 ]
 
 [[package]]

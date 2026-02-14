@@ -2,7 +2,7 @@ import datetime
 from typing import List
 
 from book.order import Order
-from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_EXECUTION_WITH_PRICE, TRADE_TYPE_NON_CROSS, TRADE_TYPE_CROSS
+from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_EXECUTION_WITH_PRICE, TRADE_TYPE_NON_CROSS, TRADE_TYPE_OPEN_CROSS
 from book.trade_listener import TradeListener
 from itch.itch_feed_handler import ItchFeedHandler
 
@@ -138,7 +138,7 @@ class TestCrossTrade:
         assert trade.shares == 5000
         assert trade.price == 250.0
         assert trade.side == ""
-        assert trade.type == TRADE_TYPE_CROSS
+        assert trade.type == TRADE_TYPE_OPEN_CROSS
         assert trade.exch_match_id == "66666"
 
 
