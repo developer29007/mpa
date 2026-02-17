@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Chart</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; }
+  #header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: #1e222d; border-bottom: 1px solid #2a2e39; }
+  #header h1 { font-size: 14px; font-weight: 600; color: #d1d4dc; white-space: nowrap; }
+  #filter { background: #2a2e39; border: 1px solid #363a45; color: #d1d4dc; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 200px; }
+  #filter::placeholder { color: #787b86; }
+  #stats { font-size: 12px; color: #787b86; margin-left: auto; white-space: nowrap; }
+  #status { font-size: 12px; padding: 2px 8px; border-radius: 3px; }
+  .connected { background: #26a69a33; color: #26a69a; }
+  .disconnected { background: #ef535033; color: #ef5350; }
+  #charts { width: 100%; height: calc(100vh - 40px); display: flex; flex-direction: column; }
+  .chart-panel { flex: 1; min-height: 0; position: relative; border-bottom: 1px solid #2a2e39; }
+  .chart-label { position: absolute; top: 8px; left: 12px; z-index: 10; font-size: 13px; font-weight: 600; pointer-events: none; }
+  .chart-price { font-size: 12px; font-weight: 400; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>Trade Chart</h1>
+  <input id="filter" type="text" placeholder="Filter stocks (e.g. AAPL,TSLA)" />
+  <span id="stats">Trades: <span id="trade-count">0</span> | Stocks: <span id="stock-count">0</span></span>
+  <span id="status" class="disconnected">Disconnected</span>
+</div>
+<div id="charts"></div>
+
+<script>
+(function() {
+  const COLORS = [
+    '#2962FF','#26a69a','#ef5350','#ab47bc','#ff9800',
+    '#42a5f5','#66bb6a','#ec407a','#7e57c2','#ffca28',
+    '#26c6da','#8d6e63','#78909c','#d4e157','#ff7043',
+  ];
+
+  const HEADER_HEIGHT = 40;
+  const chartsContainer = document.getElementById('charts');
+  const stockEntries = {};  // stock -> { chart, series, panel, priceEl, color }
+  let colorIdx = 0;
+  let tradeCount = 0;
+  let fitScheduled = false;
+  const tradeCountEl = document.getElementById('trade-count');
+  const stockCountEl = document.getElementById('stock-count');
+  const statusEl = document.getElementById('status');
+  const filterEl = document.getElementById('filter');
+
+  function resizeAll() {
+    const visiblePanels = Object.values(stockEntries).filter(e => !e.panel.classList.contains('hidden'));
+    const panelHeight = visiblePanels.length > 0
+      ? Math.floor((window.innerHeight - HEADER_HEIGHT) / visiblePanels.length)
+      : 300;
+    for (const entry of visiblePanels) {
+      entry.panel.style.height = panelHeight + 'px';
+      entry.chart.resize(chartsContainer.clientWidth, panelHeight);
+    }
+  }
+
+  window.addEventListener('resize', resizeAll);
+
+  function getOrCreateEntry(stock) {
+    if (stockEntries[stock]) return stockEntries[stock];
+
+    const color = COLORS[colorIdx++ % COLORS.length];
+
+    // panel container
+    const panel = document.createElement('div');
+    panel.className = 'chart-panel';
+    panel.dataset.stock = stock;
+    chartsContainer.appendChild(panel);
+
+    // label overlay
+    const label = document.createElement('div');
+    label.className = 'chart-label';
+    label.style.color = color;
+    label.innerHTML = `${stock}<span class="chart-price" id="lp-${stock}">-</span>`;
+    panel.appendChild(label);
+
+    // chart div
+    const chartDiv = document.createElement('div');
+    chartDiv.style.width = '100%';
+    chartDiv.style.height = '100%';
+    panel.appendChild(chartDiv);
+
+    const chart = LightweightCharts.createChart(chartDiv, {
+      layout: { background: { color: '#131722' }, textColor: '#d1d4dc' },
+      grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: true },
+      rightPriceScale: { borderColor: '#2a2e39' },
+    });
+
+    const series = chart.addLineSeries({
+      color: color,
+      lineWidth: 2,
+      priceLineVisible: true,
+      lastValueVisible: true,
+    });
+
+    const entry = { chart, series, panel, priceEl: null, color };
+    stockEntries[stock] = entry;
+    entry.priceEl = document.getElementById('lp-' + stock);
+
+    stockCountEl.textContent = Object.keys(stockEntries).length;
+    resizeAll();
+    applyFilter();
+    return entry;
+  }
+
+  function scheduleFitContent() {
+    if (fitScheduled) return;
+    fitScheduled = true;
+    requestAnimationFrame(() => {
+      for (const entry of Object.values(stockEntries)) {
+        entry.chart.timeScale().fitContent();
+      }
+      fitScheduled = false;
+    });
+  }
+
+  function applyFilter() {
+    const raw = filterEl.value.trim().toUpperCase();
+    const tokens = raw ? raw.split(/[\s,]+/).filter(Boolean) : [];
+    for (const [stock, entry] of Object.entries(stockEntries)) {
+      const visible = tokens.length === 0 || tokens.some(t => stock.includes(t));
+      entry.panel.classList.toggle('hidden', !visible);
+      entry.panel.style.display = visible ? '' : 'none';
+    }
+    resizeAll();
+  }
+
+  filterEl.addEventListener('input', applyFilter);
+
+  function processBatch(trades) {
+    for (const t of trades) {
+      const entry = getOrCreateEntry(t.s);
+      entry.series.update({ time: t.t, value: t.p });
+      if (entry.priceEl) entry.priceEl.textContent = t.p.toFixed(2);
+    }
+    tradeCount += trades.length;
+    tradeCountEl.textContent = tradeCount.toLocaleString();
+    scheduleFitContent();
+  }
+
+  // WebSocket with auto-reconnect
+  let ws;
+  let reconnectDelay = 500;
+
+  function connect() {
+    const wsUrl = `ws://${location.host}`;
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      statusEl.textContent = 'Connected';
+      statusEl.className = 'connected';
+      reconnectDelay = 500;
+    };
+
+    ws.onmessage = (event) => {
+      const trades = JSON.parse(event.data);
+      processBatch(trades);
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = 'Disconnected';
+      statusEl.className = 'disconnected';
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>
