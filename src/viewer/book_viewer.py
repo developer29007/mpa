@@ -177,14 +177,14 @@ class BookViewer(TradeListener):
 
         t.append("\n")
 
-        # Bid range
-        total_bid = len(book.bids)
-        shown_bid = min(self._depth, total_bid)
+        # Bid range (filter stale levels with size <= 0)
         try:
-            if book.bids and shown_bid > 0:
-                bid_keys = list(reversed(book.bids.keys()))
+            live_bid_levels = [k for k, v in reversed(book.bids.items()) if v.size > 0]
+            total_bid = len(live_bid_levels)
+            shown_bid = min(self._depth, total_bid)
+            if live_bid_levels and shown_bid > 0:
                 t.append("  Bid Range: ", style="dim")
-                t.append(f"{self._fp(bid_keys[shown_bid - 1])} \u2013 {self._fp(bid_keys[0])}", style="white")
+                t.append(f"{self._fp(live_bid_levels[shown_bid - 1])} \u2013 {self._fp(live_bid_levels[0])}", style="white")
                 t.append(f"  ({shown_bid} / {total_bid} levels)", style="dim")
             else:
                 t.append("  Bid Range: \u2014", style="dim")
@@ -193,14 +193,14 @@ class BookViewer(TradeListener):
 
         t.append("\n")
 
-        # Ask range
-        total_ask = len(book.asks)
-        shown_ask = min(self._depth, total_ask)
+        # Ask range (filter stale levels with size <= 0)
         try:
-            if book.asks and shown_ask > 0:
-                ask_keys = list(book.asks.keys())
+            live_ask_levels = [k for k, v in book.asks.items() if v.size > 0]
+            total_ask = len(live_ask_levels)
+            shown_ask = min(self._depth, total_ask)
+            if live_ask_levels and shown_ask > 0:
                 t.append("  Ask Range: ", style="dim")
-                t.append(f"{self._fp(ask_keys[0])} \u2013 {self._fp(ask_keys[shown_ask - 1])}", style="white")
+                t.append(f"{self._fp(live_ask_levels[0])} \u2013 {self._fp(live_ask_levels[shown_ask - 1])}", style="white")
                 t.append(f"  ({shown_ask} / {total_ask} levels)", style="dim")
             else:
                 t.append("  Ask Range: \u2014", style="dim")
@@ -230,8 +230,10 @@ class BookViewer(TradeListener):
             return table
 
         try:
-            bid_levels = list(reversed(self._book.bids.values()))[:self._depth]
-            ask_levels = list(self._book.asks.values())[:self._depth]
+            # Filter out stale levels with size <= 0 (can appear briefly due to
+            # the feed thread reducing size before cleanup removes the level)
+            bid_levels = [lvl for lvl in reversed(self._book.bids.values()) if lvl.size > 0][:self._depth]
+            ask_levels = [lvl for lvl in self._book.asks.values() if lvl.size > 0][:self._depth]
         except RuntimeError:
             # SortedDict modified during iteration by feed thread
             return table
@@ -257,11 +259,11 @@ class BookViewer(TradeListener):
         W = self.CONTENT_WIDTH
 
         try:
-            bid_depth = sum(lvl.size for lvl in book.bids.values()) if book else 0
-            ask_depth = sum(lvl.size for lvl in book.asks.values()) if book else 0
+            bid_depth = sum(lvl.size for lvl in book.bids.values() if lvl.size > 0) if book else 0
+            ask_depth = sum(lvl.size for lvl in book.asks.values() if lvl.size > 0) if book else 0
             total_orders = (
-                sum(len(lvl.orders) for lvl in book.bids.values()) +
-                sum(len(lvl.orders) for lvl in book.asks.values())
+                sum(len(lvl.orders) for lvl in book.bids.values() if lvl.size > 0) +
+                sum(len(lvl.orders) for lvl in book.asks.values() if lvl.size > 0)
             ) if book else 0
             updated_str = self._ft(book.timestamp_ns) if book else "\u2014"
         except RuntimeError:
