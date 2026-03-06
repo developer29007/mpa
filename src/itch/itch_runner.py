@@ -49,7 +49,7 @@ def main():
         feed_handler.register_trade_listener(VwapPrinter(set(args.print_vwap), args.bucket_intervals))
 
     if args.chart is not None:
-        from itch.trade_chart_listener import TradeChartListener
+        from web.trade_chart_listener import TradeChartListener
         stock_set = set(args.chart) if args.chart else None
         feed_handler.register_trade_listener(TradeChartListener(stocks=stock_set, port=args.chart_port))
 
