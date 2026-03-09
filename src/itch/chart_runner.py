@@ -52,6 +52,7 @@ def main():
 
     consumer = Consumer({
         "bootstrap.servers": args.kafka,
+        # TODO: what's this group.id?
         "group.id": f"chart-runner-{topic}",
         "auto.offset.reset": "earliest",
     })
@@ -80,6 +81,7 @@ def main():
 
             data = msg.value()
             # Framed format: 2-byte size + 1-byte msg_type + payload
+            # TODO: we are not checking if all the bytes are available.
             msg_type = chr(data[2])
             if msg_type != "T":
                 continue
