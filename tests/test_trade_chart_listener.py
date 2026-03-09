@@ -4,7 +4,7 @@ import json
 from unittest.mock import patch, MagicMock
 
 from book.trade import Trade, TRADE_TYPE_EXECUTION
-from itch.trade_chart_listener import _trade_to_json, TradeChartListener
+from web.trade_chart_listener import _trade_to_json, TradeChartListener
 
 TEST_DATE = datetime.date(2024, 1, 15)
 
@@ -82,7 +82,7 @@ class TestTradeToJson:
 
 
 class TestTradeChartListenerFiltering:
-    @patch("itch.trade_chart_listener.ChartServer")
+    @patch("web.trade_chart_listener.ChartServer")
     def test_filters_by_stock_set(self, mock_server_cls):
         mock_server = MagicMock()
         mock_server_cls.return_value = mock_server
@@ -99,7 +99,7 @@ class TestTradeChartListenerFiltering:
 
         assert mock_server.enqueue_trade.call_count == 2
 
-    @patch("itch.trade_chart_listener.ChartServer")
+    @patch("web.trade_chart_listener.ChartServer")
     def test_none_stocks_accepts_all(self, mock_server_cls):
         mock_server = MagicMock()
         mock_server_cls.return_value = mock_server
