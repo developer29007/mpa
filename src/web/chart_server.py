@@ -11,13 +11,14 @@ from websockets.http11 import Response
 
 class ChartServer:
 
-    def __init__(self, host: str = "localhost", port: int = 8765):
+    def __init__(self, host: str = "localhost", port: int = 8765, html_file: str | None = None):
         self.host = host
         self.port = port
         self._queue: SimpleQueue[str] = SimpleQueue()
         self._clients: set[ServerConnection] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._html = (Path(__file__).parent / "trade_chart.html").read_text()
+        html_path = Path(html_file) if html_file else Path(__file__).parent / "trade_chart.html"
+        self._html = html_path.read_text()
 
     def enqueue_trade(self, trade_json: str):
         """Thread-safe, non-blocking enqueue of a JSON trade string."""
@@ -57,9 +58,14 @@ class ChartServer:
             self._clients.discard(websocket)
 
     async def _broadcast_loop(self):
+        last_max = 0
         while True:
             await asyncio.sleep(0.05)  # 50ms batch interval
             batch = self._drain_queue()
+            batch_len = len(batch)
+            if batch_len > last_max:
+                print(f"Updated batch_len max:{batch_len} prev: {last_max}")
+                last_max = batch_len
             if batch and self._clients:
                 message = "[" + ",".join(batch) + "]"
                 websockets.broadcast(self._clients, message)
