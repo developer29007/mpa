@@ -1,4 +1,4 @@
-from analytics.VwapCalculator import VwapCalculator
+from analytics.VwapTracker import VwapTracker
 from book.trade import Trade
 from book.trade_listener import TradeListener
 from util.TimeUtil import nanos_to_ms_str
@@ -9,12 +9,12 @@ class VwapPrinter(TradeListener):
     def __init__(self, stocks: set[str], bucket_intervals: list[int]):
         self.stocks = stocks
         self.bucket_intervals = bucket_intervals
-        self.calculators: dict[str, VwapCalculator] = {}
+        self.calculators: dict[str, VwapTracker] = {}
 
-    def _get_or_create_calculator(self, stock: str) -> VwapCalculator:
+    def _get_or_create_calculator(self, stock: str) -> VwapTracker:
         calc = self.calculators.get(stock)
         if calc is None:
-            calc = VwapCalculator(stock, *self.bucket_intervals)
+            calc = VwapTracker(stock, *self.bucket_intervals)
             self.calculators[stock] = calc
         return calc
 

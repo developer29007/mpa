@@ -10,6 +10,7 @@ class VwapBucket:
     def __init__(self, interval_ms: int):
         self.interval_ms: int = interval_ms
         self.interval_ns: int = ms_to_nanos(interval_ms)
+        # track trades for this bucket interval
         self.trades = deque()
         self.last_trade_time = None
         self.trade_count: int = 0
