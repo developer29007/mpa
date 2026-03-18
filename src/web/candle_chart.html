@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Candle Chart</title>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #131722; color: #d1d4dc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace; overflow: hidden; }
+  #header { display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: #1e222d; border-bottom: 1px solid #2a2e39; height: 40px; }
+  #header h1 { font-size: 14px; font-weight: 600; color: #d1d4dc; white-space: nowrap; }
+  #filter { background: #2a2e39; border: 1px solid #363a45; color: #d1d4dc; padding: 4px 8px; border-radius: 4px; font-size: 12px; width: 200px; }
+  #filter::placeholder { color: #787b86; }
+  #stats { font-size: 12px; color: #787b86; margin-left: auto; white-space: nowrap; }
+  #status { font-size: 12px; padding: 2px 8px; border-radius: 3px; }
+  .connected    { background: #26a69a33; color: #26a69a; }
+  .disconnected { background: #ef535033; color: #ef5350; }
+  #charts { position: absolute; top: 40px; left: 0; right: 0; bottom: 0; }
+  .stock-panel  { position: absolute; left: 0; right: 0; display: flex; flex-direction: column; border-bottom: 1px solid #2a2e39; }
+  .stock-label  { padding: 3px 12px; font-size: 13px; font-weight: 600; background: #1e222d; flex-shrink: 0; height: 26px; display: flex; align-items: center; gap: 8px; }
+  .vol-label    { padding: 0 12px; font-size: 11px; color: #787b86; background: #131722; flex-shrink: 0; height: 20px; display: flex; align-items: center; gap: 12px; }
+  .tooltip {
+    position: absolute; pointer-events: none;
+    background: #1e222d; border: 1px solid #363a45; border-radius: 4px;
+    padding: 8px 10px; font-size: 11px; line-height: 1.75;
+    z-index: 100; min-width: 175px; display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  }
+  .tt-row       { display: flex; justify-content: space-between; gap: 16px; }
+  .tt-label     { color: #787b86; }
+  .tt-sep       { border-top: 1px solid #2a2e39; margin: 5px 0; }
+  .tt-ratio-bar { height: 6px; border-radius: 3px; overflow: hidden; display: flex; margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h1>Candle Chart</h1>
+  <input id="filter" type="text" placeholder="Filter stocks (e.g. AAPL,TSLA)" />
+  <span id="stats">Candles: <span id="candle-count">0</span> | Stocks: <span id="stock-count">0</span></span>
+  <span id="status" class="disconnected">Disconnected</span>
+</div>
+<div id="charts"></div>
+
+<script>
+(function () {
+  const BG   = '#131722';
+  const GRID = '#1e222d';
+  const TEXT = '#d1d4dc';
+  const BULL = '#26a69a';
+  const BEAR = '#ef5350';
+  const GRAY = '#787b86';
+
+  const COLORS = [
+    '#2962FF','#26a69a','#ef5350','#ab47bc','#ff9800',
+    '#42a5f5','#66bb6a','#ec407a','#7e57c2','#ffca28',
+    '#26c6da','#8d6e63','#78909c','#d4e157','#ff7043',
+  ];
+
+  const HEADER_H      = 40;
+  const STOCK_LABEL_H = 26;
+  const VOL_LABEL_H   = 20;
+
+  const chartsEl     = document.getElementById('charts');
+  const filterEl     = document.getElementById('filter');
+  const statusEl     = document.getElementById('status');
+  const candleCountEl = document.getElementById('candle-count');
+  const stockCountEl  = document.getElementById('stock-count');
+
+  // symbol -> { panel, candleDiv, volDiv, tooltip, candleChart, volChart,
+  //             candleSeries, totalVolSeries, offerVolSeries,
+  //             priceEl, candleData, color, hidden }
+  const stockEntries = {};
+  let colorIdx    = 0;
+  let candleCount = 0;
+  let fitScheduled = false;
+
+  // ── Heights ────────────────────────────────────────────────────
+  function computeHeights() {
+    const visible = Object.values(stockEntries).filter(e => !e.hidden);
+    const n       = visible.length;
+    if (n === 0) return { perStock: 300, candleH: 200, volH: 60 };
+    const total    = window.innerHeight - HEADER_H;
+    const perStock = Math.floor(total / n);
+    const inner    = perStock - STOCK_LABEL_H - VOL_LABEL_H;
+    const candleH  = Math.floor(inner * 0.72);
+    const volH     = inner - candleH;
+    return { perStock, candleH, volH };
+  }
+
+  function repositionPanels() {
+    const { perStock, candleH, volH } = computeHeights();
+    const w = window.innerWidth;
+    let idx = 0;
+    for (const entry of Object.values(stockEntries)) {
+      if (entry.hidden) continue;
+      entry.panel.style.top    = (idx * perStock) + 'px';
+      entry.panel.style.height = perStock + 'px';
+      entry.candleDiv.style.height = candleH + 'px';
+      entry.volDiv.style.height    = volH    + 'px';
+      entry.candleChart.resize(w, candleH);
+      entry.volChart.resize(w, volH);
+      idx++;
+    }
+  }
+
+  window.addEventListener('resize', repositionPanels);
+
+  // ── Filter ─────────────────────────────────────────────────────
+  function applyFilter() {
+    const raw    = filterEl.value.trim().toUpperCase();
+    const tokens = raw ? raw.split(/[\s,]+/).filter(Boolean) : [];
+    for (const [symbol, entry] of Object.entries(stockEntries)) {
+      entry.hidden = tokens.length > 0 && !tokens.some(t => symbol.includes(t));
+      entry.panel.style.display = entry.hidden ? 'none' : '';
+    }
+    repositionPanels();
+  }
+  filterEl.addEventListener('input', applyFilter);
+
+  // ── Tooltip ────────────────────────────────────────────────────
+  function fmt(n) {
+    if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+    if (n >= 1_000)     return (n / 1_000).toFixed(0) + 'K';
+    return String(n);
+  }
+
+  function buildTooltipHtml(c) {
+    const isAuction = c.av > 0 && c.bv === 0 && c.ov === 0;
+    const offerPct  = isAuction ? 0 : Math.round(c.ov / c.tv * 100);
+    const bidPct    = isAuction ? 0 : 100 - offerPct;
+    const date      = new Date(c.t * 1000);
+    const timeStr   = date.toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/New_York',
+    });
+    return `
+      <div style="color:${GRAY};margin-bottom:4px;font-size:10px">${timeStr} ET</div>
+      <div class="tt-row"><span class="tt-label">O</span><span>${c.o.toFixed(2)}</span></div>
+      <div class="tt-row"><span class="tt-label">H</span><span style="color:${BULL}">${c.h.toFixed(2)}</span></div>
+      <div class="tt-row"><span class="tt-label">L</span><span style="color:${BEAR}">${c.l.toFixed(2)}</span></div>
+      <div class="tt-row"><span class="tt-label">C</span><span>${c.c.toFixed(2)}</span></div>
+      <div class="tt-sep"></div>
+      <div class="tt-row"><span class="tt-label">Total vol</span><span>${fmt(c.tv)}</span></div>
+      ${isAuction ? `
+        <div class="tt-row"><span class="tt-label">Type</span><span style="color:${GRAY}">Auction</span></div>
+        <div style="color:${GRAY};font-size:10px;margin-top:2px">No bid/offer side info</div>
+      ` : `
+        <div class="tt-row">
+          <span style="color:${BULL}">&#9650; Offer</span>
+          <span style="color:${BULL}">${fmt(c.ov)} &nbsp;${offerPct}%</span>
+        </div>
+        <div class="tt-row">
+          <span style="color:${BEAR}">&#9660; Bid &nbsp;&nbsp;</span>
+          <span style="color:${BEAR}">${fmt(c.bv)} &nbsp;${bidPct}%</span>
+        </div>
+        <div class="tt-ratio-bar">
+          <div style="width:${offerPct}%;background:${BULL}"></div>
+          <div style="width:${bidPct}%;background:${BEAR}"></div>
+        </div>
+      `}
+    `;
+  }
+
+  function showTooltip(entry, param, yOffset) {
+    if (!param.time || !param.point || param.point.x < 0 || param.point.y < 0) {
+      entry.tooltip.style.display = 'none';
+      return;
+    }
+    const c = entry.candleData[param.time];
+    if (!c) { entry.tooltip.style.display = 'none'; return; }
+
+    entry.tooltip.innerHTML = buildTooltipHtml(c);
+
+    const ttW  = 185;
+    const panW = window.innerWidth;
+    let   left = param.point.x + 14;
+    if (left + ttW > panW) left = param.point.x - ttW - 14;
+    entry.tooltip.style.left    = left + 'px';
+    entry.tooltip.style.top     = Math.max(4, yOffset + param.point.y - 50) + 'px';
+    entry.tooltip.style.display = 'block';
+  }
+
+  // ── Create chart panel for a new stock ─────────────────────────
+  function getOrCreateEntry(symbol) {
+    if (stockEntries[symbol]) return stockEntries[symbol];
+
+    const color = COLORS[colorIdx++ % COLORS.length];
+    const { candleH, volH } = computeHeights();
+
+    // Panel
+    const panel = document.createElement('div');
+    panel.className = 'stock-panel';
+    panel.dataset.symbol = symbol;
+
+    // Tooltip (panel-level so it covers both sub-charts)
+    const tooltip = document.createElement('div');
+    tooltip.className = 'tooltip';
+    panel.appendChild(tooltip);
+
+    // Stock label
+    const labelEl = document.createElement('div');
+    labelEl.className = 'stock-label';
+    labelEl.style.color = color;
+    labelEl.innerHTML = `${symbol}<span id="lp-${symbol}" style="color:${TEXT};font-weight:400;margin-left:8px">-</span>`;
+    panel.appendChild(labelEl);
+
+    // Candle chart div
+    const candleDiv = document.createElement('div');
+    candleDiv.style.cssText = `height:${candleH}px; flex-shrink:0;`;
+    panel.appendChild(candleDiv);
+
+    // Volume label
+    const volLabelEl = document.createElement('div');
+    volLabelEl.className = 'vol-label';
+    volLabelEl.innerHTML =
+      `Volume &nbsp;` +
+      `<span style="color:${BULL}">&#9632; offer (buy)</span>` +
+      `<span style="color:${BEAR}">&#9632; bid (sell)</span>` +
+      `<span style="color:${GRAY}">&#9632; auction</span>`;
+    panel.appendChild(volLabelEl);
+
+    // Volume chart div
+    const volDiv = document.createElement('div');
+    volDiv.style.cssText = `height:${volH}px; flex-shrink:0;`;
+    panel.appendChild(volDiv);
+
+    chartsEl.appendChild(panel);
+
+    // ── Candlestick chart ────────────────────────────────────────
+    const candleChart = LightweightCharts.createChart(candleDiv, {
+      width:  window.innerWidth,
+      height: candleH,
+      layout:    { background: { color: BG }, textColor: TEXT },
+      grid:      { vertLines: { color: GRID }, horzLines: { color: GRID } },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#2a2e39' },
+      rightPriceScale: { borderColor: '#2a2e39' },
+    });
+    const candleSeries = candleChart.addCandlestickSeries({
+      upColor: BULL, downColor: BEAR,
+      borderUpColor: BULL, borderDownColor: BEAR,
+      wickUpColor: BULL, wickDownColor: BEAR,
+    });
+
+    // ── Volume chart ─────────────────────────────────────────────
+    const volChart = LightweightCharts.createChart(volDiv, {
+      width:  window.innerWidth,
+      height: volH,
+      layout:    { background: { color: BG }, textColor: TEXT },
+      grid:      { vertLines: { color: GRID }, horzLines: { color: GRID } },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      timeScale: { visible: false, borderColor: '#2a2e39' },
+      rightPriceScale: { borderColor: '#2a2e39' },
+    });
+
+    // Series A (back): total volume in red — bid portion shows at top
+    const totalVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, base: 0 });
+    // Series B (front): offer volume in green — overlaps red from bottom
+    const offerVolSeries = volChart.addHistogramSeries({ priceFormat: { type: 'volume' }, base: 0 });
+
+    // ── Time scale sync ──────────────────────────────────────────
+    let lock = false;
+    candleChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+      if (lock || !r) return; lock = true;
+      volChart.timeScale().setVisibleLogicalRange(r); lock = false;
+    });
+    volChart.timeScale().subscribeVisibleLogicalRangeChange(r => {
+      if (lock || !r) return; lock = true;
+      candleChart.timeScale().setVisibleLogicalRange(r); lock = false;
+    });
+
+    // ── Tooltips on both charts ──────────────────────────────────
+    // yOffset = distance from top of panel to top of each sub-chart
+    const candleYOffset = STOCK_LABEL_H;
+    const volYOffset    = STOCK_LABEL_H + candleH + VOL_LABEL_H;
+
+    candleChart.subscribeCrosshairMove(p => showTooltip(entry, p, candleYOffset));
+    volChart.subscribeCrosshairMove(p => showTooltip(entry, p, volYOffset));
+
+    const entry = {
+      panel, candleDiv, volDiv, tooltip, color,
+      candleChart, volChart,
+      candleSeries, totalVolSeries, offerVolSeries,
+      priceEl: document.getElementById('lp-' + symbol),
+      candleData: {},   // time -> raw candle object for tooltip lookup
+      hidden: false,
+    };
+    stockEntries[symbol] = entry;
+
+    stockCountEl.textContent = Object.keys(stockEntries).length;
+    repositionPanels();
+    applyFilter();
+    return entry;
+  }
+
+  // ── Fit content (deferred to avoid thrashing) ──────────────────
+  function scheduleFit() {
+    if (fitScheduled) return;
+    fitScheduled = true;
+    requestAnimationFrame(() => {
+      for (const e of Object.values(stockEntries)) {
+        e.candleChart.timeScale().fitContent();
+        e.volChart.timeScale().fitContent();
+      }
+      fitScheduled = false;
+    });
+  }
+
+  // ── Process incoming batch ─────────────────────────────────────
+  function processBatch(candles) {
+    for (const c of candles) {
+      const entry = getOrCreateEntry(c.s);
+
+      // Update candlestick series
+      entry.candleSeries.update({ time: c.t, open: c.o, high: c.h, low: c.l, close: c.c });
+
+      // Update volume series (layered bid/offer split)
+      const isAuction = c.av > 0 && c.bv === 0 && c.ov === 0;
+      entry.totalVolSeries.update({ time: c.t, value: c.tv, color: isAuction ? GRAY : BEAR });
+      entry.offerVolSeries.update({ time: c.t, value: isAuction ? 0 : c.ov, color: BULL });
+
+      // Store for tooltip
+      entry.candleData[c.t] = c;
+
+      // Update price label
+      if (entry.priceEl) entry.priceEl.textContent = c.c.toFixed(2);
+
+      candleCount++;
+    }
+    candleCountEl.textContent = candleCount.toLocaleString();
+    scheduleFit();
+  }
+
+  // ── WebSocket with auto-reconnect ──────────────────────────────
+  let ws;
+  let reconnectDelay = 500;
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}`);
+
+    ws.onopen = () => {
+      statusEl.textContent = 'Connected';
+      statusEl.className   = 'connected';
+      reconnectDelay = 500;
+    };
+
+    ws.onmessage = (event) => {
+      processBatch(JSON.parse(event.data));
+    };
+
+    ws.onclose = () => {
+      statusEl.textContent = 'Disconnected';
+      statusEl.className   = 'disconnected';
+      setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>

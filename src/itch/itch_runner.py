@@ -12,6 +12,18 @@ def main():
     parser.add_argument('--kafka', default=None, help='Kafka bootstrap servers (enables trade + vwap publishers)')
     parser.add_argument('--print-trades', nargs='+', default=None, metavar='STOCK', help='Stocks to print trades for')
     parser.add_argument('--print-vwap', nargs='+', default=None, metavar='STOCK', help='Stocks to print VWAP for')
+    parser.add_argument('--chart', nargs='*', default=None, metavar='STOCK',
+                        help='Start trade chart server (optionally filter stocks; omit stocks for all)')
+    parser.add_argument('--chart-port', type=int, default=8765, help='Trade chart server port (default: 8765)')
+    parser.add_argument('--chart-host', default='localhost',
+                        help='Trade chart server host (default: localhost; use 0.0.0.0 to allow network access)')
+    parser.add_argument('--candle-chart', nargs='*', default=None, metavar='STOCK',
+                        help='Start candle chart server (optionally filter stocks; omit stocks for all)')
+    parser.add_argument('--candle-port', type=int, default=8766, help='Candle chart server port (default: 8766)')
+    parser.add_argument('--candle-host', default='localhost',
+                        help='Candle chart server host (default: localhost; use 0.0.0.0 to allow network access)')
+    parser.add_argument('--candle-interval', type=int, default=60, metavar='SECONDS',
+                        help='Candle interval in seconds (default: 60)')
     parser.add_argument('--max-msgs', type=int, default=0, help='Max messages to process (0 = all)')
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
@@ -45,18 +57,33 @@ def main():
         from itch.vwap_printer import VwapPrinter
         feed_handler.register_trade_listener(VwapPrinter(set(args.print_vwap), args.bucket_intervals))
 
+    if args.chart is not None:
+        from web.trade_chart_listener import TradeChartListener
+        stock_set = set(args.chart) if args.chart else None
+        feed_handler.register_trade_listener(TradeChartListener(stocks=stock_set, host=args.chart_host, port=args.chart_port))
+
+    if args.candle_chart is not None:
+        from web.candle_chart_listener import CandleChartListener
+        stock_set = set(args.candle_chart) if args.candle_chart else None
+        feed_handler.register_trade_listener(CandleChartListener(
+            stocks=stock_set, host=args.candle_host, port=args.candle_port, interval_seconds=args.candle_interval,
+        ))
+
     batch = 1000
     msg_processed = 0
     print(f"Processing {itch_file_path} ...")
-    with itch_file_path.open('rb') as data:
-        while True:
-            if not feed_handler.parser.decode(data, batch):
-                print(f"Finished processing {itch_file_path}")
-                break
-            msg_processed += batch
-            if args.max_msgs and msg_processed >= args.max_msgs:
-                print(f"Reached max messages: {args.max_msgs}")
-                break
+    try:
+        with itch_file_path.open('rb') as data:
+            while True:
+                if not feed_handler.parser.decode(data, batch):
+                    print(f"Finished processing {itch_file_path}")
+                    break
+                msg_processed += batch
+                if args.max_msgs and msg_processed >= args.max_msgs:
+                    print(f"Reached max messages: {args.max_msgs}")
+                    break
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
 
     if trade_publisher:
         trade_publisher.flush()
