@@ -5,7 +5,7 @@ description = "Default template for PDM package"
 authors = [
     {name = "Neeraj Bajaj", email = "neeraj.bajaj@gmail.com"},
 ]
-dependencies = ["sortedcontainers>=2.4.0", "confluent-kafka>=2.3.0", "websockets>=13.0"]
+dependencies = ["sortedcontainers>=2.4.0", "confluent-kafka>=2.3.0", "websockets>=13.0", "rich>=14.3.2"]
 requires-python = "==3.12.*"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,7 +19,7 @@ distribution = true
 
 [tool.pdm.build]
 package-dir = "src"
-includes = ["book", "itch", "analytics", "publishers", "web"]
+includes = ["book", "itch", "analytics", "publishers", "viewer", "web"]
 
 [dependency-groups]
 dev = [

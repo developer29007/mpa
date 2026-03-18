@@ -2,7 +2,7 @@ import datetime
 import math
 import struct
 
-from analytics.VwapCalculator import VwapCalculator
+from analytics.VwapTracker import VwapTracker
 from book.trade import Trade
 from book.trade_listener import TradeListener
 from publishers.kafka_publisher import KafkaPublisher
@@ -32,12 +32,12 @@ class VwapPublisher(TradeListener, KafkaPublisher):
         topic = f'vwap-analytics-{trade_date.isoformat()}'
         KafkaPublisher.__init__(self, bootstrap_servers, topic)
         self.bucket_intervals = bucket_intervals
-        self.calculators: dict[str, VwapCalculator] = {}
+        self.calculators: dict[str, VwapTracker] = {}
 
-    def _get_or_create_calculator(self, stock: str) -> VwapCalculator:
+    def _get_or_create_calculator(self, stock: str) -> VwapTracker:
         calc = self.calculators.get(stock)
         if calc is None:
-            calc = VwapCalculator(stock, *self.bucket_intervals)
+            calc = VwapTracker(stock, *self.bucket_intervals)
             self.calculators[stock] = calc
         return calc
 
