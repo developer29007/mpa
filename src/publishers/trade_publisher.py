@@ -5,8 +5,21 @@ from book.trade import Trade
 from book.trade_listener import TradeListener
 from publishers.kafka_publisher import KafkaPublisher
 
+# Big-endian (>) binary struct format for a serialized trade message. Format characters:
+#   Q  = unsigned 64-bit int  → timestamp_ns
+#   8s = 8-byte char string   → sec_id (security identifier, left-justified)
+#   I  = unsigned 32-bit int  → shares
+#   d  = 64-bit float (double)→ price
+#   c  = 1-byte char          → side (e.g. 'B'/'S')
+#   c  = 1-byte char          → trade_type
+#   4s = 4-byte char string   → exch_id (exchange identifier)
+#   8s = 8-byte char string   → src (data source)
+#   Q  = unsigned 64-bit int  → exch_match_id
+#   I  = unsigned 32-bit int  → trade_date (YYYYMMDD integer)
 TRADE_FORMAT = '>Q8sIdcc4s8sQI'
 TRADE_MSG_TYPE = 'T'
+
+
 def _serialize_trade(trade: Trade) -> bytes:
     sec_id = trade.sec_id.encode('ascii').ljust(8)
     side = trade.side.encode('ascii') if trade.side else b' '
