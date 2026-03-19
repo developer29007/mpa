@@ -19,6 +19,11 @@ class VwapBucket:
         self.shares_traded: int = 0
 
     def add_trade(self, trade: Trade):
+        """Add a trade to the bucket and evict trades outside the rolling window.
+
+        Args:
+            trade (Trade): The trade to add, containing price, shares, and timestamp_ns.
+        """
         self.trades.append(trade)
         self.trade_count += 1
         self.last_trade = trade.price
