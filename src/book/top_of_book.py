@@ -1,5 +1,5 @@
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -13,4 +13,8 @@ class TopOfBook:
     ask_size: int = 0
     last_trade: Optional[float] = None
     last_trade_timestamp: int = 0
+    last_trade_shares: int = 0
+    last_trade_side: str = ''
+    last_trade_type: str = ''
+    last_trade_match_id: int = 0
 

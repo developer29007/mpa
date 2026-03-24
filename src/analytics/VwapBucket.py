@@ -38,6 +38,6 @@ class VwapBucket:
             self.volume_traded -= (old_trade.shares * old_trade.price)
 
     def vwap_price(self):
-        if self.trade_count == 0:
+        if self.shares_traded == 0:
             return None
         return self.volume_traded / self.shares_traded

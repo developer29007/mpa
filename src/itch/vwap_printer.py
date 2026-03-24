@@ -1,3 +1,5 @@
+from typing import Optional
+
 from analytics.VwapTracker import VwapTracker
 from book.trade import Trade
 from book.trade_listener import TradeListener
@@ -6,7 +8,7 @@ from util.TimeUtil import nanos_to_ms_str
 
 class VwapPrinter(TradeListener):
 
-    def __init__(self, stocks: set[str], bucket_intervals: list[int]):
+    def __init__(self, stocks: Optional[set[str]], bucket_intervals: list[int]):
         self.stocks = stocks
         self.bucket_intervals = bucket_intervals
         self.calculators: dict[str, VwapTracker] = {}
@@ -19,7 +21,7 @@ class VwapPrinter(TradeListener):
         return calc
 
     def on_trade(self, trade: Trade):
-        if trade.sec_id not in self.stocks:
+        if self.stocks is not None and trade.sec_id not in self.stocks:
             return
         calc = self._get_or_create_calculator(trade.sec_id)
         calc.add_trade(trade)

@@ -4,12 +4,10 @@ from pathlib import Path
 from typing import Optional
 
 from book.order_book import OrderBook
-from book.top_of_book import TopOfBook
 from book.order import Order
-from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_EXECUTION_WITH_PRICE, TRADE_TYPE_NON_CROSS, \
-    TRADE_TYPE_OPEN_CROSS, TRADE_TYPE_CLOSE_CROSS, TRADE_TYPE_IPO_OR_HALT, TRADE_TYPE_UNKNOWN
+from book.tob_listener import TobListener
+from book.trade import TRADE_TYPE_OPEN_CROSS, TRADE_TYPE_CLOSE_CROSS, TRADE_TYPE_IPO_OR_HALT, TRADE_TYPE_UNKNOWN
 from book.trade_listener import TradeListener
-from itch.tob_publisher import TopOfBookPublisher
 from itch.itch_listener import ItchListener
 from itch.itch_parser import ItchParser
 
@@ -30,9 +28,8 @@ class ItchFeedHandler(ItchListener):
     def __init__(self, trade_date: datetime.date, exch_id: str = "", src: str = ""):
         self.order_map: dict[int, Order] = {}
         self.book_map: dict[str, OrderBook] = {}
-        self.tob_map: dict[str, TopOfBook] = {}
-        self.tob_publisher: Optional[TopOfBookPublisher] = None
         self.trade_listeners: list[TradeListener] = []
+        self.tob_listeners: list[TobListener] = []
         self.timestamp = 0
         # Session metadata
         self.exch_id = exch_id
@@ -45,12 +42,14 @@ class ItchFeedHandler(ItchListener):
         self.parser: ItchParser = ItchParser()
         self.parser.set_listener(self)
 
+    def register_tob_listener(self, listener: TobListener):
+        self.tob_listeners.append(listener)
+        for book in self.book_map.values():
+            book.register_tob_listener(listener)
+
     def process_file(self, itch_file_path: Path) -> None:
         """Process an ITCH file through the parser pipeline."""
         self.parser.parse_file(itch_file_path)
-
-    def register_publisher(self, tob_publisher):
-        self.tob_publisher = tob_publisher
 
     def register_trade_listener(self, listener: TradeListener):
         self.trade_listeners.append(listener)
@@ -60,9 +59,11 @@ class ItchFeedHandler(ItchListener):
     def _get_or_create_book(self, stock: str) -> OrderBook:
         book = self.book_map.get(stock)
         if book is None:
-            book = OrderBook(stock)
+            book = OrderBook(stock, trade_date=self.trade_date, exch_id=self.exch_id, src=self.src)
             for listener in self.trade_listeners:
                 book.register_trade_listener(listener)
+            for listener in self.tob_listeners:
+                book.register_tob_listener(listener)
             self.book_map[stock] = book
         return book
 
@@ -75,8 +76,6 @@ class ItchFeedHandler(ItchListener):
         self.order_map[order.id] = order
         order_book = self._get_or_create_book(stock)
         order_book.order_added(order)
-        if self.tob_publisher:
-            self.publish_tob(order_book)
 
     def handle_order_delete(self, order_id: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -91,8 +90,6 @@ class ItchFeedHandler(ItchListener):
             return
 
         order_book.order_deleted(order, timestamp_ns)
-        if self.tob_publisher:
-            self.publish_tob(order_book)
 
     def handle_order_executed(self, order_id: int, exec_qty: int, match_number: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -106,23 +103,7 @@ class ItchFeedHandler(ItchListener):
             print(f"order executed but no order book for stock: {order.stock}")
             return
 
-        order_book.order_executed(order, exec_qty, timestamp_ns)
-        if self.tob_publisher:
-            self.publish_tob(order_book)
-
-        trade = Trade(
-            timestamp_ns=timestamp_ns,
-            sec_id=order.stock,
-            shares=exec_qty,
-            price=order.price / 10000,
-            side=order.buy_sell,
-            type=TRADE_TYPE_EXECUTION,
-            exch_id=self.exch_id,
-            src=self.src,
-            exch_match_id=str(match_number),
-            trade_date=self.trade_date,
-        )
-        order_book.notify_trade(trade)
+        order_book.order_executed(order, exec_qty, match_number, timestamp_ns)
 
     def handle_order_executed_with_price(self, order_id: int, exec_qty: int, exec_price: int,
                                          match_number: int, printable: str, timestamp_ns: int):
@@ -137,60 +118,20 @@ class ItchFeedHandler(ItchListener):
             print(f"order executed but no order book for stock: {order.stock}")
             return
 
-        order_book.order_executed(order, exec_qty, timestamp_ns)
-        if self.tob_publisher:
-            self.publish_tob(order_book)
-
-        if printable != 'N':
-            trade = Trade(
-                timestamp_ns=timestamp_ns,
-                sec_id=order.stock,
-                shares=exec_qty,
-                price=exec_price / 10000,
-                side=order.buy_sell,
-                type=TRADE_TYPE_EXECUTION_WITH_PRICE,
-                exch_id=self.exch_id,
-                src=self.src,
-                exch_match_id=str(match_number),
-                trade_date=self.trade_date,
-            )
-            order_book.notify_trade(trade)
+        order_book.order_executed_with_price(order, exec_qty, exec_price, match_number,
+                                              printable=(printable != 'N'), timestamp_ns=timestamp_ns)
 
     def handle_non_cross_trade(self, order_ref: int, buy_sell: str, shares: int, stock: str,
                                price: int, match_number: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
         order_book = self._get_or_create_book(stock)
-        trade = Trade(
-            timestamp_ns=timestamp_ns,
-            sec_id=stock,
-            shares=shares,
-            price=price / 10000,
-            side=buy_sell,
-            type=TRADE_TYPE_NON_CROSS,
-            exch_id=self.exch_id,
-            src=self.src,
-            exch_match_id=str(match_number),
-            trade_date=self.trade_date,
-        )
-        order_book.notify_trade(trade)
+        order_book.record_non_cross_trade(buy_sell, shares, price, match_number, timestamp_ns)
 
     def handle_cross_trade(self, shares: int, stock: str, cross_price: int,
                            match_number: int, cross_type: str, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
         order_book = self._get_or_create_book(stock)
-        trade = Trade(
-            timestamp_ns=timestamp_ns,
-            sec_id=stock,
-            shares=shares,
-            price=cross_price / 10000,
-            side="",
-            type=get_trade_type(cross_type),
-            exch_id=self.exch_id,
-            src=self.src,
-            exch_match_id=str(match_number),
-            trade_date=self.trade_date,
-        )
-        order_book.notify_trade(trade)
+        order_book.record_cross_trade(shares, cross_price, match_number, get_trade_type(cross_type), timestamp_ns)
 
     def handle_order_cancel(self, order_id: int, cancelled_shares: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -205,8 +146,6 @@ class ItchFeedHandler(ItchListener):
             return
 
         order_book.order_cancelled(order, cancelled_shares, timestamp_ns)
-        if self.tob_publisher:
-            self.publish_tob(order_book)
 
     def handle_order_replace(self, original_order_id: int, new_order_id: int, new_shares: int, new_price: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -236,12 +175,6 @@ class ItchFeedHandler(ItchListener):
         self.mpid_counts[mpid] += 1
         # Delegate to regular add_order
         self.handle_order_add(order)
-
-    def publish_tob(self, order_book: OrderBook):
-        new_tob = order_book.get_top_of_book()
-        tob: TopOfBook = self.tob_map.setdefault(order_book.stock, TopOfBook(order_book.stock))
-        # if tob != new_tob:
-        # tob.update(new_tob)
 
     # ItchListener interface implementation
     def on_add_order(self, order: Order) -> None:

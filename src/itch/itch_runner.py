@@ -3,6 +3,8 @@ from datetime import datetime
 from pathlib import Path
 
 from itch.itch_feed_handler import ItchFeedHandler
+from util.TimerService import TimerService
+from util.TimeUtil import nanos_to_ms_str
 
 
 def main():
@@ -37,48 +39,72 @@ def main():
     feed_handler = ItchFeedHandler(trade_date=date_obj)
 
     trade_publisher = None
-    vwap_publisher = None
+    tob_publisher = None
+    vwap_publishers = []
 
     if args.kafka:
         from publishers.trade_publisher import TradePublisher
+        from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
 
-        trade_publisher = TradePublisher(bootstrap_servers=args.kafka, trade_date=date_obj)
-        vwap_publisher = VwapPublisher(bootstrap_servers=args.kafka, trade_date=date_obj,
-                                       bucket_intervals=args.bucket_intervals)
+        trade_publisher = TradePublisher(bootstrap_servers=args.kafka, topic='trades')
         feed_handler.register_trade_listener(trade_publisher)
-        feed_handler.register_trade_listener(vwap_publisher)
+
+        tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
+        feed_handler.register_tob_listener(tob_publisher)
+
+        for interval_ms in args.bucket_intervals:
+            vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic=f'vwap-{interval_ms}ms', interval_ms=interval_ms)
+            feed_handler.register_trade_listener(vwap_pub)
+            vwap_publishers.append(vwap_pub)
 
     if args.print_trades:
         from itch.trade_printer import TradePrinter
-        feed_handler.register_trade_listener(TradePrinter(set(args.print_trades)))
+        stocks = None if '*' in args.print_trades else set(args.print_trades)
+        feed_handler.register_trade_listener(TradePrinter(stocks))
 
     if args.print_vwap:
         from itch.vwap_printer import VwapPrinter
-        feed_handler.register_trade_listener(VwapPrinter(set(args.print_vwap), args.bucket_intervals))
+        stocks = None if '*' in args.print_vwap else set(args.print_vwap)
+        feed_handler.register_trade_listener(VwapPrinter(stocks, args.bucket_intervals))
 
     if args.chart is not None:
         from web.trade_chart_listener import TradeChartListener
-        stock_set = set(args.chart) if args.chart else None
+        stock_set = None if not args.chart or '*' in args.chart else set(args.chart)
         feed_handler.register_trade_listener(TradeChartListener(stocks=stock_set, host=args.chart_host, port=args.chart_port))
 
     if args.candle_chart is not None:
         from web.candle_chart_listener import CandleChartListener
-        stock_set = set(args.candle_chart) if args.candle_chart else None
+        stock_set = None if not args.candle_chart or '*' in args.candle_chart else set(args.candle_chart)
         feed_handler.register_trade_listener(CandleChartListener(
             stocks=stock_set, host=args.candle_host, port=args.candle_port, interval_seconds=args.candle_interval,
         ))
 
+    timer_service = TimerService.instance()
     batch = 1000
     msg_processed = 0
+    report_interval = 1_000_000
     print(f"Processing {itch_file_path} ...")
     try:
         with itch_file_path.open('rb') as data:
             while True:
                 if not feed_handler.parser.decode(data, batch):
-                    print(f"Finished processing {itch_file_path}")
+                    print(f"Finished processing {itch_file_path} — {msg_processed:,} messages")
                     break
                 msg_processed += batch
+
+                if msg_processed % report_interval == 0:
+                    time_str = nanos_to_ms_str(feed_handler.timestamp) if feed_handler.timestamp else '--'
+                    print(f"  {msg_processed:>12,} messages  books={len(feed_handler.book_map):,}  market_time={time_str}")
+
+                if timer_service.check_timers(feed_handler.timestamp):
+                    if trade_publisher:
+                        trade_publisher.flush()
+                    if tob_publisher:
+                        tob_publisher.flush()
+                    for vwap_pub in vwap_publishers:
+                        vwap_pub.flush()
+
                 if args.max_msgs and msg_processed >= args.max_msgs:
                     print(f"Reached max messages: {args.max_msgs}")
                     break
@@ -87,8 +113,10 @@ def main():
 
     if trade_publisher:
         trade_publisher.flush()
-    if vwap_publisher:
-        vwap_publisher.flush()
+    if tob_publisher:
+        tob_publisher.flush()
+    for vwap_pub in vwap_publishers:
+        vwap_pub.flush()
 
 
 if __name__ == '__main__':
