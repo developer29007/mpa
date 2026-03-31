@@ -7,7 +7,7 @@ from book.trade_listener import TradeListener
 from publishers.kafka_publisher import KafkaPublisher
 from util.TimerListener import TimerListener
 from util.TimerService import TimerService
-from util.TimeUtil import ms_to_nanos
+from util.TimeUtil import ms_to_nanos, nanos_to_ms_str
 from util.message_id import next_id
 
 # Big-endian (>) binary struct format for a serialized VWAP message. Format characters:
@@ -56,11 +56,13 @@ class VwapPublisher(TradeListener, TimerListener, KafkaPublisher):
         bucket.add_trade(trade)
 
         if not self._timer_registered:
+            # print(f"[REGISTER] {self._interval_ms}ms timer at {nanos_to_ms_str(trade.timestamp_ns)}")
             TimerService.instance().add_timer(self._interval_ns, trade.timestamp_ns, self)
             self._timer_registered = True
 
     def on_timer_expired(self, time_interval: int, scheduled_time: int, time_now: int):
         publish_time = scheduled_time + time_interval
+        # print(f"[TIMER] {time_interval // 1_000_000}ms fired at {nanos_to_ms_str(publish_time)}")
         for stock, bucket in self._buckets.items():
             payload = _serialize_vwap(publish_time, stock, bucket)
             self._publish(VWAP_MSG_TYPE, payload)
