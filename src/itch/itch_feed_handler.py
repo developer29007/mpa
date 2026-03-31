@@ -25,7 +25,8 @@ def get_trade_type(cross_type: str):
 
 class ItchFeedHandler(ItchListener):
 
-    def __init__(self, trade_date: datetime.date, exch_id: str = "", src: str = ""):
+    def __init__(self, trade_date: datetime.date, exch_id: str = "", src: str = "",
+                 stock_filter: set[str] | None = None):
         self.order_map: dict[int, Order] = {}
         self.book_map: dict[str, OrderBook] = {}
         self.trade_listeners: list[TradeListener] = []
@@ -35,6 +36,7 @@ class ItchFeedHandler(ItchListener):
         self.exch_id = exch_id
         self.src = src
         self.trade_date = trade_date
+        self.stock_filter = stock_filter
         # MPID tracking
         self.mpid_order_count: int = 0
         self.mpid_counts: dict[str, int] = defaultdict(int)
@@ -56,7 +58,12 @@ class ItchFeedHandler(ItchListener):
         for book in self.book_map.values():
             book.register_trade_listener(listener)
 
-    def _get_or_create_book(self, stock: str) -> OrderBook:
+    def _stock_allowed(self, stock: str) -> bool:
+        return self.stock_filter is None or stock in self.stock_filter
+
+    def _get_or_create_book(self, stock: str) -> Optional[OrderBook]:
+        if not self._stock_allowed(stock):
+            return None
         book = self.book_map.get(stock)
         if book is None:
             book = OrderBook(stock, trade_date=self.trade_date, exch_id=self.exch_id, src=self.src)
@@ -69,13 +76,16 @@ class ItchFeedHandler(ItchListener):
 
     def handle_order_add(self, order: Order):
         self.timestamp = max(self.timestamp, order.timestamp_ns)
+        if not self._stock_allowed(order.stock):
+            return
         stock = order.stock
         old_order = self.order_map.get(order.id)
         if old_order is not None:
             print(f"Duplicate orderId:{order.id}! Old: {old_order}, New: {order}")
         self.order_map[order.id] = order
         order_book = self._get_or_create_book(stock)
-        order_book.order_added(order)
+        if order_book:
+            order_book.order_added(order)
 
     def handle_order_delete(self, order_id: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -84,9 +94,9 @@ class ItchFeedHandler(ItchListener):
             return
 
         order.timestamp_ns = timestamp_ns
+        del self.order_map[order_id]
         order_book = self.book_map.get(order.stock)
         if not order_book:
-            print(f"order deleted but no orderbook for stock: {order.stock}")
             return
 
         order_book.order_deleted(order, timestamp_ns)
@@ -125,13 +135,15 @@ class ItchFeedHandler(ItchListener):
                                price: int, match_number: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
         order_book = self._get_or_create_book(stock)
-        order_book.record_non_cross_trade(buy_sell, shares, price, match_number, timestamp_ns)
+        if order_book:
+            order_book.record_non_cross_trade(buy_sell, shares, price, match_number, timestamp_ns)
 
     def handle_cross_trade(self, shares: int, stock: str, cross_price: int,
                            match_number: int, cross_type: str, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
         order_book = self._get_or_create_book(stock)
-        order_book.record_cross_trade(shares, cross_price, match_number, get_trade_type(cross_type), timestamp_ns)
+        if order_book:
+            order_book.record_cross_trade(shares, cross_price, match_number, get_trade_type(cross_type), timestamp_ns)
 
     def handle_order_cancel(self, order_id: int, cancelled_shares: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -156,7 +168,6 @@ class ItchFeedHandler(ItchListener):
 
         # Delete the original order
         self.handle_order_delete(original_order_id, timestamp_ns)
-        del self.order_map[original_order_id]
 
         # Create and add the new order with same side and stock
         new_order = Order(

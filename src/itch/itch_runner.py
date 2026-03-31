@@ -26,6 +26,8 @@ def main():
                         help='Candle chart server host (default: localhost; use 0.0.0.0 to allow network access)')
     parser.add_argument('--candle-interval', type=int, default=60, metavar='SECONDS',
                         help='Candle interval in seconds (default: 60)')
+    parser.add_argument('--stocks', nargs='+', default=None, metavar='STOCK',
+                        help='Only process these stocks (default: all stocks)')
     parser.add_argument('--max-msgs', type=int, default=0, help='Max messages to process (0 = all)')
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
@@ -36,7 +38,8 @@ def main():
     itch_file = args.file or f'./data/{args.date}.NASDAQ_ITCH50'
     itch_file_path = Path(itch_file)
 
-    feed_handler = ItchFeedHandler(trade_date=date_obj)
+    stock_filter = set(args.stocks) if args.stocks else None
+    feed_handler = ItchFeedHandler(trade_date=date_obj, stock_filter=stock_filter)
 
     trade_publisher = None
     tob_publisher = None
@@ -54,7 +57,7 @@ def main():
         feed_handler.register_tob_listener(tob_publisher)
 
         for interval_ms in args.bucket_intervals:
-            vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic=f'vwap-{interval_ms}ms', interval_ms=interval_ms)
+            vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
             feed_handler.register_trade_listener(vwap_pub)
             vwap_publishers.append(vwap_pub)
 
@@ -97,13 +100,7 @@ def main():
                     time_str = nanos_to_ms_str(feed_handler.timestamp) if feed_handler.timestamp else '--'
                     print(f"  {msg_processed:>12,} messages  books={len(feed_handler.book_map):,}  market_time={time_str}")
 
-                if timer_service.check_timers(feed_handler.timestamp):
-                    if trade_publisher:
-                        trade_publisher.flush()
-                    if tob_publisher:
-                        tob_publisher.flush()
-                    for vwap_pub in vwap_publishers:
-                        vwap_pub.flush()
+                timer_service.check_timers(feed_handler.timestamp)
 
                 if args.max_msgs and msg_processed >= args.max_msgs:
                     print(f"Reached max messages: {args.max_msgs}")

@@ -9,3 +9,9 @@ dist/
 .venv/
 *.egg-info/
 .idea/
+scripts/clean_kafka.sh
+scripts/run_itch_250ms_1s_2s.sh
+scripts/start_kafka.sh
+scripts/kafka_decoder.py
+scripts/kafka_replay.sh
+scripts/kafka_tail.sh
