@@ -1,0 +1,5 @@
+FROM postgres:15
+
+# Copies the schema into the init directory.
+# Postgres runs all *.sql files here automatically on first startup (when the data volume is empty).
+COPY src/db/schema.sql /docker-entrypoint-initdb.d/01-schema.sql
