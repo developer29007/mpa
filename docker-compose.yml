@@ -62,11 +62,7 @@ services:
 
   db-consumer:
     build: .
-    command: >
-      python -m consumers.db_consumer
-      --date ${ITCH_DATE:-10302019}
-      --kafka kafka:9092
-      --dsn postgresql://mpa:mpa@postgres:5432/mpa
+    command: bash scripts/start_db_consumer.sh
     depends_on:
       kafka:
         condition: service_healthy
