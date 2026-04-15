@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -25,9 +26,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="MPA Data API", lifespan=lifespan)
 
+origins = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
