@@ -5,6 +5,8 @@ from analytics.CandleBucket import CandleBucket
 from book.trade import Trade
 from book.trade_listener import TradeListener
 from publishers.kafka_publisher import KafkaPublisher
+from util.TimerListener import TimerListener
+from util.TimerService import TimerService
 from util.TimeUtil import ms_to_nanos
 from util.message_id import next_id
 
@@ -51,7 +53,7 @@ def _serialize_candle(bucket_start_ns: int, stock: str, bucket: CandleBucket) ->
     )
 
 
-class CandlePublisher(TradeListener, KafkaPublisher):
+class CandlePublisher(TradeListener, TimerListener, KafkaPublisher):
 
     def __init__(self, bootstrap_servers: str, topic: str, interval_ms: int):
         KafkaPublisher.__init__(self, bootstrap_servers, topic)
@@ -59,6 +61,7 @@ class CandlePublisher(TradeListener, KafkaPublisher):
         self._interval_ns = ms_to_nanos(interval_ms)
         self._buckets: dict[str, CandleBucket] = {}
         self._bucket_start: dict[str, int] = {}  # stock -> current bucket start ns
+        self._timer_registered = False
 
     def _bucket_start_ns(self, timestamp_ns: int) -> int:
         return (timestamp_ns // self._interval_ns) * self._interval_ns
@@ -80,6 +83,28 @@ class CandlePublisher(TradeListener, KafkaPublisher):
 
         self._buckets[stock].add_trade(trade)
         self._bucket_start[stock] = bucket_ns
+
+        if not self._timer_registered:
+            # Align the first timer to the next epoch boundary (e.g. the next whole minute)
+            first_boundary_ns = (bucket_ns + self._interval_ns)
+            delay_ns = first_boundary_ns - trade.timestamp_ns
+            TimerService.instance().add_timer(delay_ns, trade.timestamp_ns, self)
+            self._timer_registered = True
+
+    def on_timer_expired(self, time_interval: int, scheduled_time: int, time_now: int):
+        boundary_ns = scheduled_time + time_interval
+
+        for stock, bucket in self._buckets.items():
+            bucket_start = self._bucket_start.get(stock, boundary_ns)
+            # Only publish buckets that belong to the just-closed interval.
+            # Buckets already published by on_trade have bucket_start >= boundary_ns and are skipped.
+            if bucket_start < boundary_ns and not bucket.is_empty:
+                payload = _serialize_candle(bucket_start, stock, bucket)
+                self._publish(CANDLE_MSG_TYPE, payload)
+                self._buckets[stock] = CandleBucket(self._interval_ms)
+                self._bucket_start[stock] = boundary_ns
+
+        TimerService.instance().add_timer(self._interval_ns, boundary_ns, self)
 
     def flush(self):
         for stock, bucket in self._buckets.items():
