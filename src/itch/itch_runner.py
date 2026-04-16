@@ -46,9 +46,20 @@ def main():
     vwap_publishers = []
 
     if args.kafka:
+        from confluent_kafka.admin import AdminClient, KafkaException
         from publishers.trade_publisher import TradePublisher
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
+
+        topics = ['trades', 'tob', 'vwap']
+        admin = AdminClient({'bootstrap.servers': args.kafka})
+        fs = admin.delete_topics(topics, operation_timeout=30)
+        for topic, f in fs.items():
+            try:
+                f.result()
+                print(f"[kafka] Deleted topic: {topic}")
+            except KafkaException as e:
+                print(f"[kafka] Could not delete topic {topic}: {e}")
 
         trade_publisher = TradePublisher(bootstrap_servers=args.kafka, topic='trades')
         feed_handler.register_trade_listener(trade_publisher)
