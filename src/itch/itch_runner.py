@@ -32,6 +32,9 @@ def main():
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
                         metavar='MS', help='VWAP bucket intervals in ms')
+    parser.add_argument('--candle-intervals', nargs='+', type=int,
+                        default=[60_000, 300_000],
+                        metavar='MS', help='Candle bucket intervals in ms (default: 1-min and 5-min)')
     args = parser.parse_args()
 
     date_obj = datetime.strptime(args.date, '%m%d%Y').date()
@@ -44,6 +47,7 @@ def main():
     trade_publisher = None
     tob_publisher = None
     vwap_publishers = []
+    candle_publishers = []
 
     if args.kafka:
         from confluent_kafka.admin import AdminClient, KafkaException
@@ -51,7 +55,7 @@ def main():
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
 
-        topics = ['trades', 'tob', 'vwap']
+        topics = ['trades', 'tob', 'vwap', 'candles']
         admin = AdminClient({'bootstrap.servers': args.kafka})
         fs = admin.delete_topics(topics, operation_timeout=30)
         for topic, f in fs.items():
@@ -71,6 +75,12 @@ def main():
             vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
             feed_handler.register_trade_listener(vwap_pub)
             vwap_publishers.append(vwap_pub)
+
+        from publishers.candle_publisher import CandlePublisher
+        for interval_ms in args.candle_intervals:
+            candle_pub = CandlePublisher(bootstrap_servers=args.kafka, topic='candles', interval_ms=interval_ms)
+            feed_handler.register_trade_listener(candle_pub)
+            candle_publishers.append(candle_pub)
 
     if args.print_trades:
         from itch.trade_printer import TradePrinter
@@ -125,6 +135,8 @@ def main():
         tob_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
+    for candle_pub in candle_publishers:
+        candle_pub.flush()
 
 
 if __name__ == '__main__':
