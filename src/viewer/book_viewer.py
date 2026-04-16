@@ -13,7 +13,7 @@ from rich.text import Text
 from book.order_book import OrderBook
 from book.trade import Trade
 from book.trade_listener import TradeListener
-from util.TimeUtil import nanos_to_ms_str
+from util.TimeUtil import nanos_to_us_str
 
 '''
 Real-time terminal order book viewer.
@@ -90,8 +90,8 @@ class BookViewer(TradeListener):
         return f"{size:,}"
 
     def _ft(self, nanos: int) -> str:
-        """Format nanosecond timestamp to HH:MM:SS.mmm."""
-        return nanos_to_ms_str(nanos) if nanos else "\u2014"
+        """Format nanosecond timestamp to HH:MM:SS.uuuuuu."""
+        return nanos_to_us_str(nanos) if nanos else "\u2014"
 
     # ── Section builders ───────────────────────────────────────────
 

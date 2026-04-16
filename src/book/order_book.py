@@ -7,12 +7,12 @@ from book.tob_listener import TobListener
 from book.top_of_book import TopOfBook
 from book.order import Order
 from book.price_level import PriceLevel
-from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_EXECUTION_WITH_PRICE, TRADE_TYPE_NON_CROSS
+from book.trade import Trade, TRADE_TYPE_ORDER_BOOK, TRADE_TYPE_ORDER_BOOK_PRICE, TRADE_TYPE_NOT_ON_ORDER_BOOK
 from book.trade_listener import TradeListener
 from itertools import zip_longest
 
 from util import TimeUtil
-from util.TimeUtil import nanos_to_ms_str
+from util.TimeUtil import nanos_to_us_str
 
 '''
 OrderBook for a given stock.
@@ -63,12 +63,12 @@ class OrderBook:
         ask_price = f"{self.top_of_book.ask_price / 10000:.2f}" if self.top_of_book.ask_price else ""
         bid_size = f"{self.top_of_book.bid_size}"
         ask_size = f"{self.top_of_book.ask_size}"
-        last = f"Last: {self.last_trade:.2f} @ {nanos_to_ms_str(self.last_trade_timestamp)}" if self.last_trade else ""
-        print(f"{nanos_to_ms_str(self.timestamp_ns)} {self.stock} {bid_size:>10} {bid_price:>10} | {ask_price:<10} {ask_size:<10} {last}")
+        last = f"Last: {self.last_trade:.2f} @ {nanos_to_us_str(self.last_trade_timestamp)}" if self.last_trade else ""
+        print(f"{nanos_to_us_str(self.timestamp_ns)} {self.stock} {bid_size:>10} {bid_price:>10} | {ask_price:<10} {ask_size:<10} {last}")
 
     def print_book(self):
-        last = f"  Last: {self.last_trade:.2f} @ {nanos_to_ms_str(self.last_trade_timestamp)}" if self.last_trade else ""
-        print(f"{self.stock} OrderBook at {nanos_to_ms_str(self.timestamp_ns)}{last}")
+        last = f"  Last: {self.last_trade:.2f} @ {nanos_to_us_str(self.last_trade_timestamp)}" if self.last_trade else ""
+        print(f"{self.stock} OrderBook at {nanos_to_us_str(self.timestamp_ns)}{last}")
         for bid_level, ask_level in zip_longest(reversed(self.bids.values()), self.asks.values()):
             bid_orders = f"({len(bid_level.orders)})" if bid_level else ''
             bid_size = f"{bid_level.size}" if bid_level else ''
@@ -107,7 +107,7 @@ class OrderBook:
             self.timestamp_ns = max(self.timestamp_ns, timestamp_ns)
             trade = Trade(
                 timestamp_ns=timestamp_ns, sec_id=self.stock, shares=exec_qty,
-                price=order.price / 10000, side=order.buy_sell, type=TRADE_TYPE_EXECUTION,
+                price=order.price / 10000, side=order.buy_sell, type=TRADE_TYPE_ORDER_BOOK,
                 exch_id=self.exch_id, src=self.src,
                 exch_match_id=str(match_number), trade_date=self.trade_date,
             )
@@ -126,7 +126,7 @@ class OrderBook:
             if printable:
                 trade = Trade(
                     timestamp_ns=timestamp_ns, sec_id=self.stock, shares=exec_qty,
-                    price=exec_price / 10000, side=order.buy_sell, type=TRADE_TYPE_EXECUTION_WITH_PRICE,
+                    price=exec_price / 10000, side=order.buy_sell, type=TRADE_TYPE_ORDER_BOOK_PRICE,
                     exch_id=self.exch_id, src=self.src,
                     exch_match_id=str(match_number), trade_date=self.trade_date,
                 )
@@ -142,7 +142,7 @@ class OrderBook:
         self.timestamp_ns = max(self.timestamp_ns, timestamp_ns)
         trade = Trade(
             timestamp_ns=timestamp_ns, sec_id=self.stock, shares=shares,
-            price=price / 10000, side=buy_sell, type=TRADE_TYPE_NON_CROSS,
+            price=price / 10000, side=buy_sell, type=TRADE_TYPE_NOT_ON_ORDER_BOOK,
             exch_id=self.exch_id, src=self.src,
             exch_match_id=str(match_number), trade_date=self.trade_date,
         )
