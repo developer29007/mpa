@@ -3,6 +3,7 @@ import struct
 from publishers.trade_publisher import TRADE_FORMAT
 from publishers.vwap_publisher import VWAP_FORMAT
 from publishers.tob_publisher import TOB_FORMAT
+from publishers.noii_publisher import NOII_FORMAT
 
 
 def deserialize_trade(payload: bytes) -> dict:
@@ -64,4 +65,26 @@ def deserialize_tob(payload: bytes) -> dict:
         "last_trade_side": last_trade_side.decode("ascii"),
         "last_trade_type": last_trade_type.decode("ascii"),
         "last_trade_match_id": last_trade_match_id,
+    }
+
+
+def deserialize_noii(payload: bytes) -> dict:
+    """Deserialize binary NOII payload."""
+    (
+        msg_id, timestamp_ns, stock, paired_shares, imbalance_shares,
+        far_price, near_price, current_reference_price,
+        imbalance_direction, cross_type, price_variation_indicator,
+    ) = struct.unpack(NOII_FORMAT, payload)
+    return {
+        "msg_id": msg_id,
+        "timestamp_ns": timestamp_ns,
+        "stock": stock.decode("ascii").strip(),
+        "paired_shares": paired_shares,
+        "imbalance_shares": imbalance_shares,
+        "far_price": far_price,
+        "near_price": near_price,
+        "current_reference_price": current_reference_price,
+        "imbalance_direction": imbalance_direction.decode("ascii"),
+        "cross_type": cross_type.decode("ascii"),
+        "price_variation_indicator": price_variation_indicator.decode("ascii"),
     }

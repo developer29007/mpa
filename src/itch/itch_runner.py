@@ -43,6 +43,7 @@ def main():
 
     trade_publisher = None
     tob_publisher = None
+    noii_publisher = None
     vwap_publishers = []
 
     if args.kafka:
@@ -50,8 +51,9 @@ def main():
         from publishers.trade_publisher import TradePublisher
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
+        from publishers.noii_publisher import NoiiPublisher
 
-        topics = ['trades', 'tob', 'vwap']
+        topics = ['trades', 'tob', 'vwap', 'noii']
         admin = AdminClient({'bootstrap.servers': args.kafka})
         fs = admin.delete_topics(topics, operation_timeout=30)
         for topic, f in fs.items():
@@ -66,6 +68,9 @@ def main():
 
         tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
         feed_handler.register_tob_listener(tob_publisher)
+
+        noii_publisher = NoiiPublisher(bootstrap_servers=args.kafka, topic='noii')
+        feed_handler.register_noii_listener(noii_publisher)
 
         for interval_ms in args.bucket_intervals:
             vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
@@ -123,6 +128,8 @@ def main():
         trade_publisher.flush()
     if tob_publisher:
         tob_publisher.flush()
+    if noii_publisher:
+        noii_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
 
