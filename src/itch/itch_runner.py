@@ -11,7 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description='ITCH 5.0 feed handler')
     parser.add_argument('--date', required=True, help='Business date MMDDYYYY')
     parser.add_argument('--file', default=None, help='ITCH file path (default: ./data/{date}.NASDAQ_ITCH50)')
-    parser.add_argument('--kafka', default=None, help='Kafka bootstrap servers (enables trade + vwap publishers)')
+    parser.add_argument('--kafka', default=None, help='Kafka bootstrap servers (enables publishers; see --publish)')
     parser.add_argument('--print-trades', nargs='+', default=None, metavar='STOCK', help='Stocks to print trades for')
     parser.add_argument('--print-vwap', nargs='+', default=None, metavar='STOCK', help='Stocks to print VWAP for')
     parser.add_argument('--chart', nargs='*', default=None, metavar='STOCK',
@@ -32,6 +32,13 @@ def main():
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
                         metavar='MS', help='VWAP bucket intervals in ms')
+    parser.add_argument('--publish', nargs='+',
+                        choices=['trades', 'tob', 'vwap', 'noii', 'all'],
+                        default=['all'],
+                        metavar='PUBLISHER',
+                        help='Kafka publishers to enable (default: all). '
+                             'Only the selected topics are deleted at startup. '
+                             'Choices: trades tob vwap noii all')
     args = parser.parse_args()
 
     date_obj = datetime.strptime(args.date, '%m%d%Y').date()
@@ -53,9 +60,12 @@ def main():
         from publishers.vwap_publisher import VwapPublisher
         from publishers.noii_publisher import NoiiPublisher
 
-        topics = ['trades', 'tob', 'vwap', 'noii']
+        all_publishers = {'trades', 'tob', 'vwap', 'noii'}
+        publish_set = all_publishers if 'all' in args.publish else set(args.publish)
+        print(f"[kafka] Publishing: {sorted(publish_set)}")
+
         admin = AdminClient({'bootstrap.servers': args.kafka})
-        fs = admin.delete_topics(topics, operation_timeout=30)
+        fs = admin.delete_topics(list(publish_set), operation_timeout=30)
         for topic, f in fs.items():
             try:
                 f.result()
@@ -63,19 +73,23 @@ def main():
             except KafkaException as e:
                 print(f"[kafka] Could not delete topic {topic}: {e}")
 
-        trade_publisher = TradePublisher(bootstrap_servers=args.kafka, topic='trades')
-        feed_handler.register_trade_listener(trade_publisher)
+        if 'trades' in publish_set:
+            trade_publisher = TradePublisher(bootstrap_servers=args.kafka, topic='trades')
+            feed_handler.register_trade_listener(trade_publisher)
 
-        tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
-        feed_handler.register_tob_listener(tob_publisher)
+        if 'tob' in publish_set:
+            tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
+            feed_handler.register_tob_listener(tob_publisher)
 
-        noii_publisher = NoiiPublisher(bootstrap_servers=args.kafka, topic='noii')
-        feed_handler.register_noii_listener(noii_publisher)
+        if 'noii' in publish_set:
+            noii_publisher = NoiiPublisher(bootstrap_servers=args.kafka, topic='noii')
+            feed_handler.register_noii_listener(noii_publisher)
 
-        for interval_ms in args.bucket_intervals:
-            vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
-            feed_handler.register_trade_listener(vwap_pub)
-            vwap_publishers.append(vwap_pub)
+        if 'vwap' in publish_set:
+            for interval_ms in args.bucket_intervals:
+                vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
+                feed_handler.register_trade_listener(vwap_pub)
+                vwap_publishers.append(vwap_pub)
 
     if args.print_trades:
         from itch.trade_printer import TradePrinter

@@ -44,6 +44,7 @@ PYTHONPATH=src python -m itch.itch_runner --date MMDDYYYY [OPTIONS]
 | `--kafka HOST:PORT` | None | Enable Kafka publishing. When set, ALL four topics are published: `trades`, `tob`, `vwap`, `noii`. Without this flag, nothing is published. |
 | `--stocks A B …` | All stocks | Filter: only process these symbols. Greatly speeds up tests. |
 | `--max-msgs N` | 0 (all) | Stop after N total ITCH messages. Use for quick smoke tests. **Do not use for NOII testing** — NOII messages only appear near market open/close. |
+| `--publish A B …` | `all` | Kafka publishers to enable: `trades` `tob` `vwap` `noii` `all`. Only the selected topics are deleted at startup. Useful for targeted tests (e.g. `--publish noii` to only write NOII data). |
 | `--bucket-intervals MS …` | 250 1000 2000 5000 10000 20000 | VWAP rolling window sizes in milliseconds. |
 | `--print-trades STOCK …` | None | Print trade executions to stdout for the given stocks. |
 | `--print-vwap STOCK …` | None | Print VWAP updates to stdout. |

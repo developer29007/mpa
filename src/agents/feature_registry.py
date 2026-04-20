@@ -21,6 +21,7 @@ FEATURES: dict[str, dict] = {
             "Non-cross trades (message type P) and order-execution trades (E/C). "
             "Published to Kafka 'trades' topic when --kafka is set."
         ),
+        "publish": ["trades"],
         "topics": ["trades"],
         "tables": ["trades"],
         "verify_queries": [
@@ -53,6 +54,7 @@ FEATURES: dict[str, dict] = {
             "Top-of-book snapshots emitted on every order-book change. "
             "Published to Kafka 'tob' topic when --kafka is set."
         ),
+        "publish": ["tob"],
         "topics": ["tob"],
         "tables": ["tob"],
         "verify_queries": [
@@ -76,6 +78,7 @@ FEATURES: dict[str, dict] = {
             "Rolling VWAP calculations at configurable time intervals. "
             "Published to Kafka 'vwap' topic when --kafka is set."
         ),
+        "publish": ["vwap"],
         "topics": ["vwap"],
         "tables": ["vwap"],
         "verify_queries": [
@@ -108,6 +111,7 @@ FEATURES: dict[str, dict] = {
             "Requires processing enough messages to reach the cross windows. "
             "For a full trading day file, do NOT use --max-msgs or use a large enough limit."
         ),
+        "publish": ["noii"],
         "topics": ["noii"],
         "tables": ["noii"],
         "verify_queries": [
@@ -154,6 +158,7 @@ FEATURES: dict[str, dict] = {
             "Full pipeline: trades, TOB, VWAP, and NOII. "
             "All four Kafka topics are published when --kafka is set."
         ),
+        "publish": ["all"],
         "topics": ["trades", "tob", "vwap", "noii"],
         "tables": ["trades", "tob", "vwap", "noii"],
         "verify_queries": [

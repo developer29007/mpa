@@ -102,7 +102,9 @@ itch_runner and db_consumer. This causes:
 
 ### Step 3 — Run itch_runner
 - Use the test_date as --date, and --file pointing to the real ITCH data file.
-- itch_runner deletes and recreates all Kafka topics at startup (clean slate).
+- Pass publish=feature["publish"] so only the feature's required Kafka topic(s) are
+  written. This avoids deleting or overwriting data in unrelated topics.
+- itch_runner deletes only the selected topic(s) at startup for a clean slate.
 - Report how many messages were processed (from stdout).
 
 ### Step 4 — Run db_consumer

@@ -115,6 +115,7 @@ def run_itch_runner(
     file_path: str | None = None,
     stocks: list[str] | None = None,
     max_msgs: int = 0,
+    publish: list[str] | None = None,
     timeout_seconds: int = 600,
 ) -> dict[str, Any]:
     """
@@ -132,6 +133,9 @@ def run_itch_runner(
         max_msgs:        Stop after this many messages (0 = process entire file).
                          Use a non-zero value for quick smoke tests; set 0 for NOII testing
                          since NOII messages only appear near the open/close.
+        publish:         Which publishers to enable, e.g. ['noii'] or ['trades', 'tob'].
+                         Defaults to all four when None or omitted. Only the selected
+                         Kafka topics are deleted at startup.
         timeout_seconds: Kill the process after this many seconds (default 600 = 10 min).
     """
     cmd = [sys.executable, "-m", "itch.itch_runner", "--date", date, "--kafka", kafka]
@@ -141,6 +145,8 @@ def run_itch_runner(
         cmd += ["--stocks"] + stocks
     if max_msgs:
         cmd += ["--max-msgs", str(max_msgs)]
+    if publish:
+        cmd += ["--publish"] + publish
 
     try:
         result = subprocess.run(
@@ -432,6 +438,19 @@ TOOL_DEFINITIONS = [
                     "description": (
                         "Stop after this many ITCH messages (0 = process entire file). "
                         "Use 0 for NOII, or a large number (e.g. 50000000) for a full day."
+                    ),
+                },
+                "publish": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["trades", "tob", "vwap", "noii", "all"],
+                    },
+                    "description": (
+                        "Which Kafka publishers to enable. Defaults to all four if omitted. "
+                        "Pass the feature's 'publish' list from the registry so only the "
+                        "relevant topic is written and other topics are left untouched. "
+                        "Example: ['noii'] to only publish NOII messages."
                     ),
                 },
                 "timeout_seconds": {
