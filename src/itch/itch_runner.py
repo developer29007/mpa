@@ -65,7 +65,7 @@ def main():
         print(f"[kafka] Publishing: {sorted(publish_set)}")
 
         admin = AdminClient({'bootstrap.servers': args.kafka})
-        fs = admin.delete_topics(list(publish_set), operation_timeout=30)
+        fs = admin.delete_topics(list(all_publishers), operation_timeout=30)
         for topic, f in fs.items():
             try:
                 f.result()
