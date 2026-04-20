@@ -239,6 +239,39 @@ def run_db_consumer(
 # Database queries
 # ---------------------------------------------------------------------------
 
+def get_table_schema(dsn: str, table_name: str) -> dict[str, Any]:
+    """
+    Return column names, types, and nullability for a Postgres table.
+
+    Queries information_schema.columns. Returns exists=False if the table has no
+    columns (does not exist or was never created).
+
+    Call this after cleanup_test_data to confirm the table exists and has the
+    expected columns before running verify_queries. A missing table means the
+    feature's schema migration hasn't been applied.
+    """
+    try:
+        import psycopg
+        with psycopg.connect(dsn) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT column_name, data_type, is_nullable
+                    FROM information_schema.columns
+                    WHERE table_name = %s
+                    ORDER BY ordinal_position
+                    """,
+                    (table_name,),
+                )
+                cols = [
+                    {"name": r[0], "type": r[1], "nullable": r[2] == "YES"}
+                    for r in cur.fetchall()
+                ]
+        return {"table": table_name, "exists": len(cols) > 0, "columns": cols}
+    except Exception as e:
+        return {"table": table_name, "exists": False, "error": str(e)}
+
+
 def run_sql(dsn: str, query: str, params: dict | None = None) -> dict[str, Any]:
     """
     Execute a SQL query against Postgres and return column names + rows.
@@ -487,6 +520,27 @@ TOOL_DEFINITIONS = [
                 },
             },
             "required": ["dsn", "test_date", "tables"],
+        },
+    },
+    {
+        "name": "get_table_schema",
+        "description": (
+            "Return column names, types, and nullability for a Postgres table. "
+            "Queries information_schema.columns. Returns exists=false if the table "
+            "doesn't exist. Call this after cleanup_test_data for each table in the "
+            "feature to confirm the schema is in place before running verify_queries. "
+            "A missing table means the schema migration hasn't been applied."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "dsn": {"type": "string"},
+                "table_name": {
+                    "type": "string",
+                    "description": "Postgres table name, e.g. 'noii' or 'trades'.",
+                },
+            },
+            "required": ["dsn", "table_name"],
         },
     },
 ]

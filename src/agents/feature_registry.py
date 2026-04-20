@@ -7,7 +7,12 @@ When adding a new feature:
 2. verify_queries is a list of dicts with keys:
    - sql:         Parameterized SQL using %(date)s for the test trade_date.
    - description: Human-readable label shown in test output.
-   - min_rows:    Minimum number of rows returned for the query to pass (0 = informational only).
+   - min_rows:    Minimum number of rows the query must return (for GROUP BY queries:
+                  at least N distinct groups). Defaults to 1.
+   - min_count:   (optional) For scalar SELECT count(*) AS cnt ... queries, the minimum
+                  value that rows[0][0] must be >= for the check to pass. Without this,
+                  a count(*) query always returns 1 row even when the table is empty,
+                  so min_rows alone would incorrectly pass.
 """
 
 FEATURES: dict[str, dict] = {
@@ -23,6 +28,7 @@ FEATURES: dict[str, dict] = {
                 "sql": "SELECT count(*) AS cnt FROM trades WHERE trade_date = %(date)s",
                 "description": "Total trade rows",
                 "min_rows": 1,
+                "min_count": 1,
             },
             {
                 "sql": (
@@ -37,6 +43,7 @@ FEATURES: dict[str, dict] = {
                 "sql": "SELECT count(DISTINCT sec_id) AS stocks FROM trades WHERE trade_date = %(date)s",
                 "description": "Distinct securities with trades",
                 "min_rows": 1,
+                "min_count": 1,
             },
         ],
     },
@@ -53,11 +60,13 @@ FEATURES: dict[str, dict] = {
                 "sql": "SELECT count(*) AS cnt FROM tob WHERE trade_date = %(date)s",
                 "description": "Total TOB snapshot rows",
                 "min_rows": 1,
+                "min_count": 1,
             },
             {
                 "sql": "SELECT count(DISTINCT stock) AS stocks FROM tob WHERE trade_date = %(date)s",
                 "description": "Distinct securities with TOB updates",
                 "min_rows": 1,
+                "min_count": 1,
             },
         ],
     },
@@ -86,6 +95,7 @@ FEATURES: dict[str, dict] = {
                 ),
                 "description": "VWAP rows with a valid price (non-NULL)",
                 "min_rows": 1,
+                "min_count": 1,
             },
         ],
     },
@@ -105,6 +115,7 @@ FEATURES: dict[str, dict] = {
                 "sql": "SELECT count(*) AS cnt FROM noii WHERE trade_date = %(date)s",
                 "description": "Total NOII rows",
                 "min_rows": 1,
+                "min_count": 1,
             },
             {
                 "sql": (
@@ -133,6 +144,7 @@ FEATURES: dict[str, dict] = {
                 ),
                 "description": "NOII rows with a valid current reference price",
                 "min_rows": 1,
+                "min_count": 1,
             },
         ],
     },
@@ -149,21 +161,25 @@ FEATURES: dict[str, dict] = {
                 "sql": "SELECT count(*) AS cnt FROM trades WHERE trade_date = %(date)s",
                 "description": "Trades",
                 "min_rows": 1,
+                "min_count": 1,
             },
             {
                 "sql": "SELECT count(*) AS cnt FROM tob WHERE trade_date = %(date)s",
                 "description": "TOB snapshots",
                 "min_rows": 1,
+                "min_count": 1,
             },
             {
                 "sql": "SELECT count(*) AS cnt FROM vwap WHERE trade_date = %(date)s",
                 "description": "VWAP rows",
                 "min_rows": 1,
+                "min_count": 1,
             },
             {
                 "sql": "SELECT count(*) AS cnt FROM noii WHERE trade_date = %(date)s",
                 "description": "NOII rows",
                 "min_rows": 1,
+                "min_count": 1,
             },
         ],
     },

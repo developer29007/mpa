@@ -95,9 +95,10 @@ itch_runner and db_consumer. This causes:
 3. check_itch_file → file must exist; report size
 4. If any check fails, report FAIL and stop.
 
-### Step 2 — Clean up existing test data
+### Step 2 — Clean up and verify schema
 - Call cleanup_test_data for all tables in this feature.
-- This guarantees the verification counts only reflect the current run.
+- For each table, call get_table_schema to confirm the table exists (exists=true).
+  If a table does not exist, report FAIL immediately — the schema migration is missing.
 
 ### Step 3 — Run itch_runner
 - Use the test_date as --date, and --file pointing to the real ITCH data file.
@@ -116,7 +117,10 @@ itch_runner and db_consumer. This causes:
 ### Step 6 — Verify Postgres data
 - Run each verify_query from the feature registry using run_sql.
 - Use trade_date = the ISO form of test_date as the SQL parameter.
-- For each query: if row_count < min_rows, that query FAILS.
+- For each query apply TWO checks:
+  1. row_count < min_rows → FAIL (not enough groups or distinct values returned).
+  2. If min_count is present: rows[0][0] < min_count → FAIL (the scalar count value is
+     too low; the table may be empty even though the query returned 1 row).
 
 ### Step 7 — Report
 - Print a summary table: each check → PASS / FAIL / INFO.
@@ -146,6 +150,7 @@ _TOOL_FN_MAP = {
     "check_postgres_health":   agent_tools.check_postgres_health,
     "check_itch_file":         agent_tools.check_itch_file,
     "get_kafka_message_count": agent_tools.get_kafka_message_count,
+    "get_table_schema":        agent_tools.get_table_schema,
     "run_itch_runner":         agent_tools.run_itch_runner,
     "run_db_consumer":         agent_tools.run_db_consumer,
     "run_sql":                 agent_tools.run_sql,
