@@ -12,6 +12,8 @@ def main():
     parser.add_argument('--date', required=True, help='Business date MMDDYYYY')
     parser.add_argument('--file', default=None, help='ITCH file path (default: ./data/{date}.NASDAQ_ITCH50)')
     parser.add_argument('--kafka', default=None, help='Kafka bootstrap servers (enables publishers; see --publish)')
+    parser.add_argument('--db', default=None, metavar='DSN',
+                        help='Postgres DSN for direct DB sink (mutually exclusive with --kafka)')
     parser.add_argument('--print-trades', nargs='+', default=None, metavar='STOCK', help='Stocks to print trades for')
     parser.add_argument('--print-vwap', nargs='+', default=None, metavar='STOCK', help='Stocks to print VWAP for')
     parser.add_argument('--chart', nargs='*', default=None, metavar='STOCK',
@@ -40,6 +42,9 @@ def main():
                              'Only the selected topics are deleted at startup. '
                              'Choices: trades tob vwap noii all')
     args = parser.parse_args()
+
+    if args.kafka and args.db:
+        parser.error("--kafka and --db are mutually exclusive")
 
     date_obj = datetime.strptime(args.date, '%m%d%Y').date()
     itch_file = args.file or f'./data/{args.date}.NASDAQ_ITCH50'
@@ -90,6 +95,29 @@ def main():
                 vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
                 feed_handler.register_trade_listener(vwap_pub)
                 vwap_publishers.append(vwap_pub)
+
+    db_listener = None
+    if args.db:
+        from consumers.db_insert_listener import DbInsertListener
+        from db.connection import connect, ensure_partitions
+        from db.inserter import DbInserter
+
+        all_data_types = {'trades', 'tob', 'vwap', 'noii'}
+        publish_set = all_data_types if 'all' in args.publish else set(args.publish)
+        print(f"[db] Writing: {sorted(publish_set)}")
+
+        db_conn = connect(args.db)
+        ensure_partitions(db_conn, date_obj)
+        db_inserter = DbInserter(db_conn, date_obj)
+        vwap_intervals = args.bucket_intervals if 'vwap' in publish_set else []
+        db_listener = DbInsertListener(db_inserter, interval_ms_list=vwap_intervals)
+
+        if 'trades' in publish_set or 'vwap' in publish_set:
+            feed_handler.register_trade_listener(db_listener)
+        if 'tob' in publish_set:
+            feed_handler.register_tob_listener(db_listener)
+        if 'noii' in publish_set:
+            feed_handler.register_noii_listener(db_listener)
 
     if args.print_trades:
         from itch.trade_printer import TradePrinter
@@ -146,6 +174,12 @@ def main():
         noii_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
+
+    if db_listener:
+        trades, vwaps, tobs, noii = db_listener.flush()
+        db_conn.commit()
+        db_conn.close()
+        print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii")
 
 
 if __name__ == '__main__':

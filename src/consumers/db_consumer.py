@@ -6,6 +6,7 @@ from datetime import datetime
 
 from confluent_kafka import Consumer, KafkaError
 
+from consumers.db_insert_listener import DbInsertListener
 from consumers.deserializers import deserialize_trade, deserialize_vwap, deserialize_tob, deserialize_noii
 from db.connection import connect, ensure_partitions
 from db.inserter import DbInserter
@@ -23,13 +24,12 @@ def main():
     trade_date = datetime.strptime(args.date, "%m%d%Y").date()
     trade_date_iso = trade_date.isoformat()
 
-    # Connect to Postgres and ensure partitions exist
     conn = connect(args.dsn)
     ensure_partitions(conn, trade_date)
     inserter = DbInserter(conn, trade_date)
+    listener = DbInsertListener(inserter, batch_size=args.batch_size)
     print(f"Connected to Postgres, partitions ready for {trade_date_iso}")
 
-    # Set up Kafka consumer
     topics = ["trades", "tob", "vwap", "noii"]
     consumer = Consumer({
         "bootstrap.servers": args.kafka,
@@ -40,20 +40,8 @@ def main():
     consumer.subscribe(topics)
     print(f"Subscribed to {topics}")
 
-    # Buffers
-    trade_buf: list[dict] = []
-    vwap_buf: list[dict] = []
-    tob_buf: list[dict] = []
-    noii_buf: list[dict] = []
     last_flush = time.monotonic()
-
-    # Stats
-    total_trades = 0
-    total_vwaps = 0
-    total_tobs = 0
-    total_noii = 0
-    total_flushes = 0
-
+    total_trades = total_vwaps = total_tobs = total_noii = total_flushes = 0
     running = True
 
     def shutdown(signum, frame):
@@ -64,22 +52,17 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     def flush():
-        nonlocal trade_buf, vwap_buf, tob_buf, noii_buf, last_flush
-        nonlocal total_trades, total_vwaps, total_tobs, total_noii, total_flushes
-        if not trade_buf and not vwap_buf and not tob_buf and not noii_buf:
+        nonlocal last_flush, total_trades, total_vwaps, total_tobs, total_noii, total_flushes
+        trades, vwaps, tobs, noii = listener.flush()
+        count = trades + vwaps + tobs + noii
+        if count == 0:
             return
-        count = len(trade_buf) + len(vwap_buf) + len(tob_buf) + len(noii_buf)
-        inserter.flush(trade_buf, vwap_buf, tob_buf, noii_buf)
         consumer.commit(asynchronous=False)
-        total_trades += len(trade_buf)
-        total_vwaps += len(vwap_buf)
-        total_tobs += len(tob_buf)
-        total_noii += len(noii_buf)
+        total_trades += trades
+        total_vwaps += vwaps
+        total_tobs += tobs
+        total_noii += noii
         total_flushes += 1
-        trade_buf = []
-        vwap_buf = []
-        tob_buf = []
-        noii_buf = []
         last_flush = time.monotonic()
         print(f"Flush #{total_flushes}: {count} msgs "
               f"(total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob, {total_noii} noii)")
@@ -89,7 +72,6 @@ def main():
         while running:
             msg = consumer.poll(0.1)
             if msg is None:
-                # Check time-based flush even when idle
                 if time.monotonic() - last_flush >= args.flush_interval:
                     flush()
                 continue
@@ -100,21 +82,19 @@ def main():
                 continue
 
             data = msg.value()
-            # Framed format: 2-byte size + 1-byte msg_type + payload
             msg_type = chr(data[2])
             payload = data[3:]
 
             if msg_type == "T":
-                trade_buf.append(deserialize_trade(payload))
+                listener.buffer_trade_dict(deserialize_trade(payload))
             elif msg_type == "V":
-                vwap_buf.append(deserialize_vwap(payload))
+                listener.buffer_vwap_dict(deserialize_vwap(payload))
             elif msg_type == "B":
-                tob_buf.append(deserialize_tob(payload))
+                listener.buffer_tob_dict(deserialize_tob(payload))
             elif msg_type == "I":
-                noii_buf.append(deserialize_noii(payload))
+                listener.buffer_noii_dict(deserialize_noii(payload))
 
-            buf_size = len(trade_buf) + len(vwap_buf) + len(tob_buf) + len(noii_buf)
-            if buf_size >= args.batch_size or time.monotonic() - last_flush >= args.flush_interval:
+            if listener.pending_count >= args.batch_size or time.monotonic() - last_flush >= args.flush_interval:
                 flush()
     finally:
         flush()
