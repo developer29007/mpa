@@ -119,12 +119,13 @@ PYTHONPATH=src python -m itch.itch_runner \
     --date 01011970 \
     --file ./data/ITCH_FILE.NASDAQ_ITCH50 \
     --db "$MPA_DSN" \
-    --publish FEATURE_PUBLISHERS
+    --publish FEATURE_PUBLISHERS \
+    --max-market-time STOP_TIME
 ```
 
-Replace `ITCH_FILE` with the actual filename and `FEATURE_PUBLISHERS` with the feature's publish list (see Feature Registry).
+Replace `ITCH_FILE` with the actual filename, `FEATURE_PUBLISHERS` with the feature's publish list, and `STOP_TIME` with the market time cutoff (see Feature Registry — each feature specifies a default).
 
-**NOII note:** NOII messages only appear during market opening (~9:25–9:30 ET) and closing (~3:50–4:00 ET). Never use `--max-msgs` when testing NOII — the entire file must be processed.
+**`--max-market-time` vs `--max-msgs`:** Always use `--max-market-time` for time-bounded tests. It stops on the ITCH message timestamp, not a message count, so it reliably captures all messages up to that wall-clock time regardless of file size or market activity. Never use `--max-msgs` for NOII — message counts vary too much to reliably hit the right window.
 
 ### Step 4b — Run itch_runner + db_consumer (full-pipeline mode)
 
@@ -134,7 +135,8 @@ PYTHONPATH=src python -m itch.itch_runner \
     --date 01011970 \
     --file ./data/ITCH_FILE.NASDAQ_ITCH50 \
     --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
-    --publish FEATURE_PUBLISHERS
+    --publish FEATURE_PUBLISHERS \
+    --max-market-time STOP_TIME
 
 # Terminal 2 / subprocess with timeout: consume from Kafka into Postgres
 PYTHONPATH=src python -m consumers.db_consumer \
@@ -246,8 +248,10 @@ WHERE trade_date = '1970-01-01' AND vwap_price IS NOT NULL;
 ---
 
 ### `noii`
-**Description:** Net Order Imbalance Indicator (ITCH type I). Emitted during opening cross (~9:25–9:30 ET) and closing cross (~3:50–4:00 ET). **Requires the full ITCH file — do NOT use --max-msgs.**
+**Description:** Net Order Imbalance Indicator (ITCH type I). Emitted during opening cross (~9:25–9:30 ET) and closing cross (~3:50–4:00 ET).
 **Publish flag:** `--publish noii`
+**Default stop time:** `--max-market-time 09:31:00` — captures the full opening cross window and stops early, avoiding an unnecessary full-day scan.
+**Full-day test:** omit `--max-market-time` to also capture the closing cross (~3:50–4:00 ET).
 **Tables to clean:** `noii`
 **Verification queries:**
 

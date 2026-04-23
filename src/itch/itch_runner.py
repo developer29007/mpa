@@ -31,6 +31,8 @@ def main():
     parser.add_argument('--stocks', nargs='+', default=None, metavar='STOCK',
                         help='Only process these stocks (default: all stocks)')
     parser.add_argument('--max-msgs', type=int, default=0, help='Max messages to process (0 = all)')
+    parser.add_argument('--max-market-time', default=None, metavar='HH:MM:SS',
+                        help='Stop processing when ITCH market time reaches this wall-clock time (e.g. 09:31:00)')
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
                         metavar='MS', help='VWAP bucket intervals in ms')
@@ -141,6 +143,12 @@ def main():
             stocks=stock_set, host=args.candle_host, port=args.candle_port, interval_seconds=args.candle_interval,
         ))
 
+    max_market_time_ns = None
+    if args.max_market_time:
+        h, m, s = map(int, args.max_market_time.split(':'))
+        max_market_time_ns = (h * 3600 + m * 60 + s) * 1_000_000_000
+        print(f"Stopping at market time {args.max_market_time} ({max_market_time_ns:,} ns)")
+
     timer_service = TimerService.instance()
     batch = 1000
     msg_processed = 0
@@ -162,6 +170,10 @@ def main():
 
                 if args.max_msgs and msg_processed >= args.max_msgs:
                     print(f"Reached max messages: {args.max_msgs}")
+                    break
+
+                if max_market_time_ns and feed_handler.timestamp and feed_handler.timestamp >= max_market_time_ns:
+                    print(f"Reached market time limit {args.max_market_time} at {nanos_to_ms_str(feed_handler.timestamp)}")
                     break
     except KeyboardInterrupt:
         print("\nInterrupted.")
