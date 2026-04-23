@@ -55,6 +55,24 @@ CREATE TABLE IF NOT EXISTS tob (
 
 CREATE INDEX IF NOT EXISTS idx_tob_stock_time ON tob (stock, timestamp_ns);
 
+CREATE TABLE IF NOT EXISTS noii (
+    trade_date                DATE             NOT NULL,
+    msg_id                    BIGINT           NOT NULL,
+    timestamp_ns              BIGINT           NOT NULL,
+    stock                     VARCHAR(8)       NOT NULL,
+    paired_shares             BIGINT           NOT NULL,
+    imbalance_shares          BIGINT           NOT NULL,
+    imbalance_direction       CHAR(1)          NOT NULL,
+    far_price                 DOUBLE PRECISION,
+    near_price                DOUBLE PRECISION,
+    current_reference_price   DOUBLE PRECISION NOT NULL,
+    cross_type                CHAR(1)          NOT NULL,
+    price_variation_indicator CHAR(1)          NOT NULL,
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_noii_stock_cross ON noii (stock, cross_type, timestamp_ns);
+
 -- Market events: per-stock trading halts and resumes from ITCH 'H' Stock Trading Action.
 -- event_type: HALT, PAUSE (LULD), QUOTATION (quote-only), RESUME
 -- reason: 4-char ITCH reason code (e.g. 'LUDP', 'MWCB', 'SEC ')

@@ -1,3 +1,4 @@
+.env
 *.py[codz]
 __pycache__/
 .mypy_cache/

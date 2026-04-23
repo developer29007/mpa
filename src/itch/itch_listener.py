@@ -58,6 +58,13 @@ class ItchListener(ABC):
         pass
 
     @abstractmethod
+    def on_noii(self, paired_shares: int, imbalance_shares: int, imbalance_direction: str,
+                stock: str, far_price: int, near_price: int, current_reference_price: int,
+                cross_type: str, price_variation_indicator: str, timestamp_ns: int) -> None:
+        """Called when a Net Order Imbalance Indicator message (type 'I') is received."""
+        pass
+
+    @abstractmethod
     def on_stock_trading_action(self, stock: str, trading_state: str, reason: str,
                                 timestamp_ns: int) -> None:
         """Called when a Stock Trading Action message (type 'H') is received.

@@ -8,6 +8,8 @@ from book.market_event import (
     EVENT_HALT, EVENT_PAUSE, EVENT_QUOTATION, EVENT_RESUME,
 )
 from book.market_event_listener import MarketEventListener
+from book.noii import Noii
+from book.noii_listener import NoiiListener
 from book.order_book import OrderBook
 from book.order import Order
 from book.tob_listener import TobListener
@@ -43,6 +45,7 @@ class ItchFeedHandler(ItchListener):
         self.book_map: dict[str, OrderBook] = {}
         self.trade_listeners: list[TradeListener] = []
         self.tob_listeners: list[TobListener] = []
+        self.noii_listeners: list[NoiiListener] = []
         self.market_event_listeners: list[MarketEventListener] = []
         self.timestamp = 0
         # Session metadata
@@ -61,6 +64,9 @@ class ItchFeedHandler(ItchListener):
         self.tob_listeners.append(listener)
         for book in self.book_map.values():
             book.register_tob_listener(listener)
+
+    def register_noii_listener(self, listener: NoiiListener):
+        self.noii_listeners.append(listener)
 
     def register_market_event_listener(self, listener: MarketEventListener):
         self.market_event_listeners.append(listener)
@@ -239,6 +245,28 @@ class ItchFeedHandler(ItchListener):
     def on_cross_trade(self, shares: int, stock: str, cross_price: int, match_number: int,
                        cross_type: str, timestamp_ns: int) -> None:
         self.handle_cross_trade(shares, stock, cross_price, match_number, cross_type, timestamp_ns)
+
+    def on_noii(self, paired_shares: int, imbalance_shares: int, imbalance_direction: str,
+                stock: str, far_price: int, near_price: int, current_reference_price: int,
+                cross_type: str, price_variation_indicator: str, timestamp_ns: int) -> None:
+        self.timestamp = max(self.timestamp, timestamp_ns)
+        if not self._stock_allowed(stock):
+            return
+        noii = Noii(
+            timestamp_ns=timestamp_ns,
+            stock=stock,
+            paired_shares=paired_shares,
+            imbalance_shares=imbalance_shares,
+            imbalance_direction=imbalance_direction,
+            far_price=far_price / 10000 if far_price else None,
+            near_price=near_price / 10000 if near_price else None,
+            current_reference_price=current_reference_price / 10000,
+            cross_type=cross_type,
+            price_variation_indicator=price_variation_indicator,
+            trade_date=self.trade_date,
+        )
+        for listener in self.noii_listeners:
+            listener.on_noii(noii)
 
     def on_stock_trading_action(self, stock: str, trading_state: str, reason: str,
                                 timestamp_ns: int) -> None:

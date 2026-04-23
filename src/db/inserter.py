@@ -43,6 +43,18 @@ TOB_INSERT = """
     ) ON CONFLICT (msg_id, trade_date) DO NOTHING
 """
 
+NOII_INSERT = """
+    INSERT INTO noii (
+        trade_date, msg_id, timestamp_ns, stock, paired_shares, imbalance_shares,
+        imbalance_direction, far_price, near_price, current_reference_price,
+        cross_type, price_variation_indicator
+    ) VALUES (
+        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(stock)s, %(paired_shares)s, %(imbalance_shares)s,
+        %(imbalance_direction)s, %(far_price)s, %(near_price)s, %(current_reference_price)s,
+        %(cross_type)s, %(price_variation_indicator)s
+    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+"""
+
 MARKET_EVENT_INSERT = """
     INSERT INTO market_events (
         trade_date, msg_id, timestamp_ns, event_type, stock, reason
@@ -86,6 +98,16 @@ class DbInserter:
         with self._conn.cursor() as cur:
             cur.executemany(TOB_INSERT, tobs)
 
+    def insert_noii(self, noii_records: list[dict]) -> None:
+        if not noii_records:
+            return
+        for n in noii_records:
+            n["trade_date"] = self._trade_date
+            n["far_price"] = _nan_to_none(n["far_price"])
+            n["near_price"] = _nan_to_none(n["near_price"])
+        with self._conn.cursor() as cur:
+            cur.executemany(NOII_INSERT, noii_records)
+
     def insert_market_events(self, events: list[dict]) -> None:
         if not events:
             return
@@ -95,10 +117,12 @@ class DbInserter:
             cur.executemany(MARKET_EVENT_INSERT, events)
 
     def flush(self, trades: list[dict], vwaps: list[dict], tobs: list[dict],
+              noii_records: list[dict] | None = None,
               market_events: list[dict] | None = None) -> None:
         """Insert all buffered records in a single transaction, then commit."""
         self.insert_trades(trades)
         self.insert_vwaps(vwaps)
         self.insert_tobs(tobs)
+        self.insert_noii(noii_records or [])
         self.insert_market_events(market_events or [])
         self._conn.commit()

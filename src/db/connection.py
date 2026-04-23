@@ -14,7 +14,7 @@ def ensure_partitions(conn: psycopg.Connection, trade_date: datetime.date) -> No
     next_iso = next_day.isoformat()
     suffix = trade_date.strftime("%Y%m%d")
 
-    for table in ("trades", "vwap", "tob", "market_events"):
+    for table in ("trades", "vwap", "tob", "noii", "market_events"):
         partition = f"{table}_{suffix}"
         conn.execute(f"""
             CREATE TABLE IF NOT EXISTS {partition}
