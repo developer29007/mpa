@@ -43,15 +43,17 @@ def main():
 
     trade_publisher = None
     tob_publisher = None
+    market_event_publisher = None
     vwap_publishers = []
 
     if args.kafka:
         from confluent_kafka.admin import AdminClient, KafkaException
+        from publishers.market_event_publisher import MarketEventPublisher
         from publishers.trade_publisher import TradePublisher
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
 
-        topics = ['trades', 'tob', 'vwap']
+        topics = ['trades', 'tob', 'vwap', 'market_events']
         admin = AdminClient({'bootstrap.servers': args.kafka})
         fs = admin.delete_topics(topics, operation_timeout=30)
         for topic, f in fs.items():
@@ -66,6 +68,9 @@ def main():
 
         tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
         feed_handler.register_tob_listener(tob_publisher)
+
+        market_event_publisher = MarketEventPublisher(bootstrap_servers=args.kafka, topic='market_events')
+        feed_handler.register_market_event_listener(market_event_publisher)
 
         for interval_ms in args.bucket_intervals:
             vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
@@ -123,6 +128,8 @@ def main():
         trade_publisher.flush()
     if tob_publisher:
         tob_publisher.flush()
+    if market_event_publisher:
+        market_event_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
 

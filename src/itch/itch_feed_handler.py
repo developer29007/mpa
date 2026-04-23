@@ -3,6 +3,12 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
+from book.market_event import (
+    MarketEvent,
+    EVENT_OPEN_CROSS, EVENT_CLOSE_CROSS, EVENT_IPO_CROSS, EVENT_INTRADAY_CROSS,
+    EVENT_HALT, EVENT_PAUSE, EVENT_QUOTATION, EVENT_RESUME,
+)
+from book.market_event_listener import MarketEventListener
 from book.order_book import OrderBook
 from book.order import Order
 from book.tob_listener import TobListener
@@ -10,6 +16,20 @@ from book.trade import TRADE_TYPE_OPEN_CROSS, TRADE_TYPE_CLOSE_CROSS, TRADE_TYPE
 from book.trade_listener import TradeListener
 from itch.itch_listener import ItchListener
 from itch.itch_parser import ItchParser
+
+_CROSS_TYPE_TO_EVENT: dict[str, str] = {
+    'O': EVENT_OPEN_CROSS,
+    'C': EVENT_CLOSE_CROSS,
+    'H': EVENT_IPO_CROSS,
+    'I': EVENT_INTRADAY_CROSS,
+}
+
+_TRADING_STATE_TO_EVENT: dict[str, str] = {
+    'H': EVENT_HALT,
+    'P': EVENT_PAUSE,
+    'Q': EVENT_QUOTATION,
+    'T': EVENT_RESUME,
+}
 
 
 def get_trade_type(cross_type: str):
@@ -31,6 +51,7 @@ class ItchFeedHandler(ItchListener):
         self.book_map: dict[str, OrderBook] = {}
         self.trade_listeners: list[TradeListener] = []
         self.tob_listeners: list[TobListener] = []
+        self.market_event_listeners: list[MarketEventListener] = []
         self.timestamp = 0
         # Session metadata
         self.exch_id = exch_id
@@ -48,6 +69,9 @@ class ItchFeedHandler(ItchListener):
         self.tob_listeners.append(listener)
         for book in self.book_map.values():
             book.register_tob_listener(listener)
+
+    def register_market_event_listener(self, listener: MarketEventListener):
+        self.market_event_listeners.append(listener)
 
     def process_file(self, itch_file_path: Path) -> None:
         """Process an ITCH file through the parser pipeline."""
@@ -73,6 +97,10 @@ class ItchFeedHandler(ItchListener):
                 book.register_tob_listener(listener)
             self.book_map[stock] = book
         return book
+
+    def _notify_market_event(self, event: MarketEvent) -> None:
+        for listener in self.market_event_listeners:
+            listener.on_market_event(event)
 
     def handle_order_add(self, order: Order):
         self.timestamp = max(self.timestamp, order.timestamp_ns)
@@ -144,6 +172,16 @@ class ItchFeedHandler(ItchListener):
         order_book = self._get_or_create_book(stock)
         if order_book:
             order_book.record_cross_trade(shares, cross_price, match_number, get_trade_type(cross_type), timestamp_ns)
+        event_type = _CROSS_TYPE_TO_EVENT.get(cross_type)
+        if event_type and self._stock_allowed(stock):
+            self._notify_market_event(MarketEvent(
+                timestamp_ns=timestamp_ns,
+                stock=stock,
+                event_type=event_type,
+                trade_date=self.trade_date,
+                price=cross_price / 10000.0,
+                shares=shares,
+            ))
 
     def handle_order_cancel(self, order_id: int, cancelled_shares: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
@@ -219,3 +257,18 @@ class ItchFeedHandler(ItchListener):
     def on_cross_trade(self, shares: int, stock: str, cross_price: int, match_number: int,
                        cross_type: str, timestamp_ns: int) -> None:
         self.handle_cross_trade(shares, stock, cross_price, match_number, cross_type, timestamp_ns)
+
+    def on_stock_trading_action(self, stock: str, trading_state: str, reason: str,
+                                timestamp_ns: int) -> None:
+        self.timestamp = max(self.timestamp, timestamp_ns)
+        if not self._stock_allowed(stock):
+            return
+        event_type = _TRADING_STATE_TO_EVENT.get(trading_state)
+        if event_type:
+            self._notify_market_event(MarketEvent(
+                timestamp_ns=timestamp_ns,
+                stock=stock,
+                event_type=event_type,
+                trade_date=self.trade_date,
+                reason=reason,
+            ))

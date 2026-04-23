@@ -1,8 +1,25 @@
 import struct
 
+from publishers.market_event_publisher import MARKET_EVENT_FORMAT
 from publishers.trade_publisher import TRADE_FORMAT
 from publishers.vwap_publisher import VWAP_FORMAT
 from publishers.tob_publisher import TOB_FORMAT
+
+
+def deserialize_market_event(payload: bytes) -> dict:
+    """Deserialize binary market event payload."""
+    (
+        msg_id, timestamp_ns, stock, event_type, price, shares, reason,
+    ) = struct.unpack(MARKET_EVENT_FORMAT, payload)
+    return {
+        "msg_id": msg_id,
+        "timestamp_ns": timestamp_ns,
+        "stock": stock.decode("ascii").strip(),
+        "event_type": event_type.decode("ascii").strip(),
+        "price": price,
+        "shares": shares,
+        "reason": reason.decode("ascii").strip(),
+    }
 
 
 def deserialize_trade(payload: bytes) -> dict:

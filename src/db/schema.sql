@@ -55,6 +55,27 @@ CREATE TABLE IF NOT EXISTS tob (
 
 CREATE INDEX IF NOT EXISTS idx_tob_stock_time ON tob (stock, timestamp_ns);
 
+-- Market events: opening/closing auction prices and per-stock halts/resumes.
+-- Sources:
+--   ITCH 'Q' Cross Trade    → OPEN_CROSS, CLOSE_CROSS, IPO_CROSS, INTRADAY_CROSS
+--   ITCH 'H' Trading Action → HALT, PAUSE, QUOTATION, RESUME
+-- price/shares are populated for cross events; NULL/0 for halt events.
+-- reason is populated for halt events (e.g. 'LUDP', 'MWCB'); empty for crosses.
+CREATE TABLE IF NOT EXISTS market_events (
+    trade_date      DATE             NOT NULL,
+    msg_id          BIGINT           NOT NULL,
+    timestamp_ns    BIGINT           NOT NULL,
+    event_type      VARCHAR(16)      NOT NULL,
+    stock           VARCHAR(8)       NOT NULL DEFAULT '',
+    price           DOUBLE PRECISION,           -- auction cross price; NULL for halt/resume events
+    shares          BIGINT           NOT NULL DEFAULT 0,
+    reason          VARCHAR(4)       NOT NULL DEFAULT '',
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_market_events_stock_date
+    ON market_events (stock, trade_date, timestamp_ns);
+
 -- Helper: convert 'HH:MM:SS' or 'HH:MM:SS.mmm' to nanoseconds since midnight.
 -- Usage: time_to_ns('10:32:00') → 37920000000000
 CREATE OR REPLACE FUNCTION time_to_ns(t TEXT) RETURNS BIGINT AS $$

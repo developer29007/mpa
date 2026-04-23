@@ -6,7 +6,7 @@ from datetime import datetime
 
 from confluent_kafka import Consumer, KafkaError
 
-from consumers.deserializers import deserialize_trade, deserialize_vwap, deserialize_tob
+from consumers.deserializers import deserialize_market_event, deserialize_trade, deserialize_vwap, deserialize_tob
 from db.connection import connect, ensure_partitions
 from db.inserter import DbInserter
 
@@ -30,7 +30,7 @@ def main():
     print(f"Connected to Postgres, partitions ready for {trade_date_iso}")
 
     # Set up Kafka consumer
-    topics = ["trades", "tob", "vwap"]
+    topics = ["trades", "tob", "vwap", "market_events"]
     consumer = Consumer({
         "bootstrap.servers": args.kafka,
         "group.id": f"db-consumer-{trade_date_iso}",
@@ -44,12 +44,14 @@ def main():
     trade_buf: list[dict] = []
     vwap_buf: list[dict] = []
     tob_buf: list[dict] = []
+    market_event_buf: list[dict] = []
     last_flush = time.monotonic()
 
     # Stats
     total_trades = 0
     total_vwaps = 0
     total_tobs = 0
+    total_market_events = 0
     total_flushes = 0
 
     running = True
@@ -62,23 +64,26 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     def flush():
-        nonlocal trade_buf, vwap_buf, tob_buf, last_flush
-        nonlocal total_trades, total_vwaps, total_tobs, total_flushes
-        if not trade_buf and not vwap_buf and not tob_buf:
+        nonlocal trade_buf, vwap_buf, tob_buf, market_event_buf, last_flush
+        nonlocal total_trades, total_vwaps, total_tobs, total_market_events, total_flushes
+        if not trade_buf and not vwap_buf and not tob_buf and not market_event_buf:
             return
-        count = len(trade_buf) + len(vwap_buf) + len(tob_buf)
-        inserter.flush(trade_buf, vwap_buf, tob_buf)
+        count = len(trade_buf) + len(vwap_buf) + len(tob_buf) + len(market_event_buf)
+        inserter.flush(trade_buf, vwap_buf, tob_buf, market_event_buf)
         consumer.commit(asynchronous=False)
         total_trades += len(trade_buf)
         total_vwaps += len(vwap_buf)
         total_tobs += len(tob_buf)
+        total_market_events += len(market_event_buf)
         total_flushes += 1
         trade_buf = []
         vwap_buf = []
         tob_buf = []
+        market_event_buf = []
         last_flush = time.monotonic()
         print(f"Flush #{total_flushes}: {count} msgs "
-              f"(total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob)")
+              f"(total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob, "
+              f"{total_market_events} market_events)")
 
     print("Consuming ...")
     try:
@@ -106,15 +111,18 @@ def main():
                 vwap_buf.append(deserialize_vwap(payload))
             elif msg_type == "B":
                 tob_buf.append(deserialize_tob(payload))
+            elif msg_type == "M":
+                market_event_buf.append(deserialize_market_event(payload))
 
-            buf_size = len(trade_buf) + len(vwap_buf) + len(tob_buf)
+            buf_size = len(trade_buf) + len(vwap_buf) + len(tob_buf) + len(market_event_buf)
             if buf_size >= args.batch_size or time.monotonic() - last_flush >= args.flush_interval:
                 flush()
     finally:
         flush()
         consumer.close()
         conn.close()
-        print(f"Stopped. Total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob in {total_flushes} flushes")
+        print(f"Stopped. Total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob, "
+              f"{total_market_events} market_events in {total_flushes} flushes")
 
 
 if __name__ == "__main__":
