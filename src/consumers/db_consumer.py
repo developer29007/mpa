@@ -7,13 +7,13 @@ from datetime import datetime
 from confluent_kafka import Consumer, KafkaError
 
 from consumers.db_insert_listener import DbInsertListener
-from consumers.deserializers import deserialize_trade, deserialize_vwap, deserialize_tob, deserialize_noii
+from consumers.deserializers import deserialize_market_event, deserialize_trade, deserialize_vwap, deserialize_tob, deserialize_noii
 from db.connection import connect, ensure_partitions
 from db.inserter import DbInserter
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Kafka-to-Postgres consumer for trades, VWAP, and TOB")
+    parser = argparse.ArgumentParser(description="Kafka-to-Postgres consumer for trades, VWAP, TOB, NOII, and market events")
     parser.add_argument("--date", required=True, help="Business date MMDDYYYY")
     parser.add_argument("--kafka", required=True, help="Kafka bootstrap servers")
     parser.add_argument("--dsn", required=True, help="Postgres DSN (e.g. postgresql://user:pass@localhost:5432/mpa)")
@@ -30,7 +30,7 @@ def main():
     listener = DbInsertListener(inserter, batch_size=args.batch_size)
     print(f"Connected to Postgres, partitions ready for {trade_date_iso}")
 
-    topics = ["trades", "tob", "vwap", "noii"]
+    topics = ["trades", "tob", "vwap", "noii", "market_events"]
     consumer = Consumer({
         "bootstrap.servers": args.kafka,
         "group.id": f"db-consumer-{trade_date_iso}",
@@ -41,7 +41,8 @@ def main():
     print(f"Subscribed to {topics}")
 
     last_flush = time.monotonic()
-    total_trades = total_vwaps = total_tobs = total_noii = total_flushes = 0
+    total_trades = total_vwaps = total_tobs = total_noii = total_market_events = total_flushes = 0
+
     running = True
 
     def shutdown(signum, frame):
@@ -52,9 +53,9 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
 
     def flush():
-        nonlocal last_flush, total_trades, total_vwaps, total_tobs, total_noii, total_flushes
-        trades, vwaps, tobs, noii = listener.flush()
-        count = trades + vwaps + tobs + noii
+        nonlocal last_flush, total_trades, total_vwaps, total_tobs, total_noii, total_market_events, total_flushes
+        trades, vwaps, tobs, noii, market_events = listener.flush()
+        count = trades + vwaps + tobs + noii + market_events
         if count == 0:
             return
         consumer.commit(asynchronous=False)
@@ -62,10 +63,12 @@ def main():
         total_vwaps += vwaps
         total_tobs += tobs
         total_noii += noii
+        total_market_events += market_events
         total_flushes += 1
         last_flush = time.monotonic()
         print(f"Flush #{total_flushes}: {count} msgs "
-              f"(total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob, {total_noii} noii)")
+              f"(total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob, "
+              f"{total_noii} noii, {total_market_events} market_events)")
 
     print("Consuming ...")
     try:
@@ -93,6 +96,8 @@ def main():
                 listener.buffer_tob_dict(deserialize_tob(payload))
             elif msg_type == "I":
                 listener.buffer_noii_dict(deserialize_noii(payload))
+            elif msg_type == "M":
+                listener.buffer_market_event_dict(deserialize_market_event(payload))
 
             if listener.pending_count >= args.batch_size or time.monotonic() - last_flush >= args.flush_interval:
                 flush()
@@ -101,7 +106,7 @@ def main():
         consumer.close()
         conn.close()
         print(f"Stopped. Total: {total_trades} trades, {total_vwaps} vwap, {total_tobs} tob, "
-              f"{total_noii} noii in {total_flushes} flushes")
+              f"{total_noii} noii, {total_market_events} market_events in {total_flushes} flushes")
 
 
 if __name__ == "__main__":

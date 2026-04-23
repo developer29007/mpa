@@ -73,6 +73,23 @@ CREATE TABLE IF NOT EXISTS noii (
 
 CREATE INDEX IF NOT EXISTS idx_noii_stock_cross ON noii (stock, cross_type, timestamp_ns);
 
+-- Market events: per-stock trading halts and resumes from ITCH 'H' Stock Trading Action.
+-- event_type: HALT, PAUSE (LULD), QUOTATION (quote-only), RESUME
+-- reason: 4-char ITCH reason code (e.g. 'LUDP', 'MWCB', 'SEC ')
+-- Note: opening/closing auction prices are stored in the trades table (trade_type='O'/'C').
+CREATE TABLE IF NOT EXISTS market_events (
+    trade_date      DATE             NOT NULL,
+    msg_id          BIGINT           NOT NULL,
+    timestamp_ns    BIGINT           NOT NULL,
+    event_type      VARCHAR(16)      NOT NULL,
+    stock           VARCHAR(8)       NOT NULL DEFAULT '',
+    reason          VARCHAR(4)       NOT NULL DEFAULT '',
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_market_events_stock_date
+    ON market_events (stock, trade_date, timestamp_ns);
+
 -- Helper: convert 'HH:MM:SS' or 'HH:MM:SS.mmm' to nanoseconds since midnight.
 -- Usage: time_to_ns('10:32:00') → 37920000000000
 CREATE OR REPLACE FUNCTION time_to_ns(t TEXT) RETURNS BIGINT AS $$

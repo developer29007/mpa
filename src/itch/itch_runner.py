@@ -37,12 +37,11 @@ def main():
                         default=[250, 1000, 2000, 5000, 10000, 20000],
                         metavar='MS', help='VWAP bucket intervals in ms')
     parser.add_argument('--publish', nargs='+',
-                        choices=['trades', 'tob', 'vwap', 'noii', 'all'],
+                        choices=['trades', 'tob', 'vwap', 'noii', 'market_events', 'all'],
                         default=['all'],
                         metavar='PUBLISHER',
-                        help='Kafka publishers to enable (default: all). '
-                             'Only the selected topics are deleted at startup. '
-                             'Choices: trades tob vwap noii all')
+                        help='Publishers to enable (default: all). '
+                             'Choices: trades tob vwap noii market_events all')
     args = parser.parse_args()
 
     if args.kafka and args.db:
@@ -58,16 +57,18 @@ def main():
     trade_publisher = None
     tob_publisher = None
     noii_publisher = None
+    market_event_publisher = None
     vwap_publishers = []
 
     if args.kafka:
         from confluent_kafka.admin import AdminClient, KafkaException
+        from publishers.market_event_publisher import MarketEventPublisher
         from publishers.trade_publisher import TradePublisher
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
         from publishers.noii_publisher import NoiiPublisher
 
-        all_publishers = {'trades', 'tob', 'vwap', 'noii'}
+        all_publishers = {'trades', 'tob', 'vwap', 'noii', 'market_events'}
         publish_set = all_publishers if 'all' in args.publish else set(args.publish)
         print(f"[kafka] Publishing: {sorted(publish_set)}")
 
@@ -92,6 +93,10 @@ def main():
             noii_publisher = NoiiPublisher(bootstrap_servers=args.kafka, topic='noii')
             feed_handler.register_noii_listener(noii_publisher)
 
+        if 'market_events' in publish_set:
+            market_event_publisher = MarketEventPublisher(bootstrap_servers=args.kafka, topic='market_events')
+            feed_handler.register_market_event_listener(market_event_publisher)
+
         if 'vwap' in publish_set:
             for interval_ms in args.bucket_intervals:
                 vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
@@ -104,7 +109,7 @@ def main():
         from db.connection import connect, ensure_partitions
         from db.inserter import DbInserter
 
-        all_data_types = {'trades', 'tob', 'vwap', 'noii'}
+        all_data_types = {'trades', 'tob', 'vwap', 'noii', 'market_events'}
         publish_set = all_data_types if 'all' in args.publish else set(args.publish)
         print(f"[db] Writing: {sorted(publish_set)}")
 
@@ -120,6 +125,8 @@ def main():
             feed_handler.register_tob_listener(db_listener)
         if 'noii' in publish_set:
             feed_handler.register_noii_listener(db_listener)
+        if 'market_events' in publish_set:
+            feed_handler.register_market_event_listener(db_listener)
 
     if args.print_trades:
         from itch.trade_printer import TradePrinter
@@ -184,14 +191,16 @@ def main():
         tob_publisher.flush()
     if noii_publisher:
         noii_publisher.flush()
+    if market_event_publisher:
+        market_event_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
 
     if db_listener:
-        trades, vwaps, tobs, noii = db_listener.flush()
+        trades, vwaps, tobs, noii, market_events = db_listener.flush()
         db_conn.commit()
         db_conn.close()
-        print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii")
+        print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii, {market_events} market_events")
 
 
 if __name__ == '__main__':

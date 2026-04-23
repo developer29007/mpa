@@ -55,6 +55,14 @@ NOII_INSERT = """
     ) ON CONFLICT (msg_id, trade_date) DO NOTHING
 """
 
+MARKET_EVENT_INSERT = """
+    INSERT INTO market_events (
+        trade_date, msg_id, timestamp_ns, event_type, stock, reason
+    ) VALUES (
+        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(event_type)s, %(stock)s, %(reason)s
+    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+"""
+
 
 class DbInserter:
 
@@ -100,11 +108,21 @@ class DbInserter:
         with self._conn.cursor() as cur:
             cur.executemany(NOII_INSERT, noii_records)
 
+    def insert_market_events(self, events: list[dict]) -> None:
+        if not events:
+            return
+        for e in events:
+            e["trade_date"] = self._trade_date
+        with self._conn.cursor() as cur:
+            cur.executemany(MARKET_EVENT_INSERT, events)
+
     def flush(self, trades: list[dict], vwaps: list[dict], tobs: list[dict],
-              noii_records: list[dict] | None = None) -> None:
+              noii_records: list[dict] | None = None,
+              market_events: list[dict] | None = None) -> None:
         """Insert all buffered records in a single transaction, then commit."""
         self.insert_trades(trades)
         self.insert_vwaps(vwaps)
         self.insert_tobs(tobs)
         self.insert_noii(noii_records or [])
+        self.insert_market_events(market_events or [])
         self._conn.commit()

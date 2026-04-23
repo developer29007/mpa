@@ -538,6 +538,8 @@ class ItchParser:
             self._parse_trade_non_cross(msg_data)
         elif msg_type == 'Q':  # Cross Trade
             self._parse_cross_trade(msg_data)
+        elif msg_type == 'H':  # Stock Trading Action
+            self._parse_stock_trading_action(msg_data)
         elif msg_type == 'I':  # NOII
             self._parse_noii(msg_data)
 
@@ -614,6 +616,17 @@ class ItchParser:
         self.listener.on_cross_trade(shares, stock.decode('ascii').rstrip(), cross_price,
                                      match_number, cross_type.decode('ascii'), timestamp_ns)
 
+    def _parse_stock_trading_action(self, msg_data: bytes) -> None:
+        (stock_locate, tracking_number, timestamp_bytes, stock, trading_state,
+         reserved, reason) = struct.unpack(STOCK_TRADING_ACTION_FMT, msg_data)
+        timestamp_ns = int.from_bytes(timestamp_bytes, byteorder='big', signed=False)
+        self.listener.on_stock_trading_action(
+            stock.decode('ascii').rstrip(),
+            trading_state.decode('ascii'),
+            reason.decode('ascii').rstrip(),
+            timestamp_ns,
+        )
+
     def _parse_noii(self, msg_data: bytes) -> None:
         (stock_locate, tracking_number, timestamp_bytes, paired_shares, imbalance_shares,
          imbalance_direction, stock, far_price, near_price, current_ref_price,
@@ -624,6 +637,7 @@ class ItchParser:
             stock.decode('ascii').rstrip(), far_price, near_price, current_ref_price,
             cross_type.decode('ascii'), price_var_indicator.decode('ascii'), timestamp_ns,
         )
+
 
 
 def decode_itch_file(itch_file_path):

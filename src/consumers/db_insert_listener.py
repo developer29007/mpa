@@ -1,6 +1,8 @@
 import math
 
 from analytics.VwapBucket import VwapBucket
+from book.market_event import MarketEvent
+from book.market_event_listener import MarketEventListener
 from book.noii import Noii
 from book.noii_listener import NoiiListener
 from book.tob_listener import TobListener
@@ -44,6 +46,16 @@ def _tob_to_dict(tob: TopOfBook) -> dict:
         "last_trade_side": tob.last_trade_side,
         "last_trade_type": tob.last_trade_type,
         "last_trade_match_id": tob.last_trade_match_id,
+    }
+
+
+def _market_event_to_dict(event: MarketEvent) -> dict:
+    return {
+        "msg_id": next_id(),
+        "timestamp_ns": event.timestamp_ns,
+        "stock": event.stock,
+        "event_type": event.event_type,
+        "reason": event.reason,
     }
 
 
@@ -104,7 +116,7 @@ class _VwapTimerHelper(TimerListener):
         TimerService.instance().add_timer(time_interval, publish_time, self)
 
 
-class DbInsertListener(TradeListener, TobListener, NoiiListener):
+class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventListener):
     """Buffers market events and flushes them to the database via DbInserter.
 
     Two usage modes:
@@ -122,6 +134,7 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener):
         self._vwap_buf: list[dict] = []
         self._tob_buf: list[dict] = []
         self._noii_buf: list[dict] = []
+        self._market_event_buf: list[dict] = []
         self._vwap_timers = [_VwapTimerHelper(ms, self._vwap_buf) for ms in (interval_ms_list or [])]
 
     # --- Domain object interface (direct/itch_runner mode) ---
@@ -140,6 +153,10 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener):
         self._noii_buf.append(_noii_to_dict(noii))
         self._maybe_flush()
 
+    def on_market_event(self, event: MarketEvent) -> None:
+        self._market_event_buf.append(_market_event_to_dict(event))
+        self._maybe_flush()
+
     # --- Dict interface (Kafka mode — preserves original msg_ids) ---
     # These do NOT trigger _maybe_flush so that the Kafka polling loop controls when to
     # flush (it must also commit Kafka offsets after each flush).
@@ -156,25 +173,31 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener):
     def buffer_noii_dict(self, d: dict) -> None:
         self._noii_buf.append(d)
 
+    def buffer_market_event_dict(self, d: dict) -> None:
+        self._market_event_buf.append(d)
+
     @property
     def pending_count(self) -> int:
-        return len(self._trade_buf) + len(self._vwap_buf) + len(self._tob_buf) + len(self._noii_buf)
+        return (len(self._trade_buf) + len(self._vwap_buf) + len(self._tob_buf)
+                + len(self._noii_buf) + len(self._market_event_buf))
 
     # --- Flush ---
 
     def _maybe_flush(self) -> None:
-        total = len(self._trade_buf) + len(self._vwap_buf) + len(self._tob_buf) + len(self._noii_buf)
-        if total >= self._batch_size:
+        if self.pending_count >= self._batch_size:
             self.flush()
 
-    def flush(self) -> tuple[int, int, int, int]:
-        """Flush all buffered records to the DB. Returns (trades, vwaps, tobs, noii) counts."""
-        counts = (len(self._trade_buf), len(self._vwap_buf), len(self._tob_buf), len(self._noii_buf))
+    def flush(self) -> tuple[int, int, int, int, int]:
+        """Flush all buffered records to the DB. Returns (trades, vwaps, tobs, noii, market_events) counts."""
+        counts = (len(self._trade_buf), len(self._vwap_buf), len(self._tob_buf),
+                  len(self._noii_buf), len(self._market_event_buf))
         if not any(counts):
             return counts
-        self._inserter.flush(self._trade_buf, self._vwap_buf, self._tob_buf, self._noii_buf)
+        self._inserter.flush(self._trade_buf, self._vwap_buf, self._tob_buf,
+                             self._noii_buf, self._market_event_buf)
         self._trade_buf.clear()
         self._vwap_buf.clear()
         self._tob_buf.clear()
         self._noii_buf.clear()
+        self._market_event_buf.clear()
         return counts

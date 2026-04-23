@@ -63,3 +63,13 @@ class ItchListener(ABC):
                 cross_type: str, price_variation_indicator: str, timestamp_ns: int) -> None:
         """Called when a Net Order Imbalance Indicator message (type 'I') is received."""
         pass
+
+    @abstractmethod
+    def on_stock_trading_action(self, stock: str, trading_state: str, reason: str,
+                                timestamp_ns: int) -> None:
+        """Called when a Stock Trading Action message (type 'H') is received.
+
+        trading_state: 'H'=Halt, 'P'=Pause (LULD), 'Q'=Quote-only, 'T'=Trading
+        reason: 4-char reason code (e.g. 'LUDP', 'MWCB', 'SEC ')
+        """
+        pass

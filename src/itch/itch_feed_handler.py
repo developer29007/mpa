@@ -3,6 +3,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
+from book.market_event import (
+    MarketEvent,
+    EVENT_HALT, EVENT_PAUSE, EVENT_QUOTATION, EVENT_RESUME,
+)
+from book.market_event_listener import MarketEventListener
 from book.noii import Noii
 from book.noii_listener import NoiiListener
 from book.order_book import OrderBook
@@ -12,6 +17,13 @@ from book.trade import TRADE_TYPE_OPEN_CROSS, TRADE_TYPE_CLOSE_CROSS, TRADE_TYPE
 from book.trade_listener import TradeListener
 from itch.itch_listener import ItchListener
 from itch.itch_parser import ItchParser
+
+_TRADING_STATE_TO_EVENT: dict[str, str] = {
+    'H': EVENT_HALT,
+    'P': EVENT_PAUSE,
+    'Q': EVENT_QUOTATION,
+    'T': EVENT_RESUME,
+}
 
 
 def get_trade_type(cross_type: str):
@@ -34,6 +46,7 @@ class ItchFeedHandler(ItchListener):
         self.trade_listeners: list[TradeListener] = []
         self.tob_listeners: list[TobListener] = []
         self.noii_listeners: list[NoiiListener] = []
+        self.market_event_listeners: list[MarketEventListener] = []
         self.timestamp = 0
         # Session metadata
         self.exch_id = exch_id
@@ -54,6 +67,9 @@ class ItchFeedHandler(ItchListener):
 
     def register_noii_listener(self, listener: NoiiListener):
         self.noii_listeners.append(listener)
+
+    def register_market_event_listener(self, listener: MarketEventListener):
+        self.market_event_listeners.append(listener)
 
     def process_file(self, itch_file_path: Path) -> None:
         """Process an ITCH file through the parser pipeline."""
@@ -79,6 +95,10 @@ class ItchFeedHandler(ItchListener):
                 book.register_tob_listener(listener)
             self.book_map[stock] = book
         return book
+
+    def _notify_market_event(self, event: MarketEvent) -> None:
+        for listener in self.market_event_listeners:
+            listener.on_market_event(event)
 
     def handle_order_add(self, order: Order):
         self.timestamp = max(self.timestamp, order.timestamp_ns)
@@ -247,3 +267,18 @@ class ItchFeedHandler(ItchListener):
         )
         for listener in self.noii_listeners:
             listener.on_noii(noii)
+
+    def on_stock_trading_action(self, stock: str, trading_state: str, reason: str,
+                                timestamp_ns: int) -> None:
+        self.timestamp = max(self.timestamp, timestamp_ns)
+        if not self._stock_allowed(stock):
+            return
+        event_type = _TRADING_STATE_TO_EVENT.get(trading_state)
+        if event_type:
+            self._notify_market_event(MarketEvent(
+                timestamp_ns=timestamp_ns,
+                stock=stock,
+                event_type=event_type,
+                trade_date=self.trade_date,
+                reason=reason,
+            ))
