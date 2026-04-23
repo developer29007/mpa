@@ -62,6 +62,8 @@ echo "KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 
 If `MPA_DSN` is not set, stop and ask the user to create a `.env` file.
 
+**Python interpreter:** This project uses PDM. Always invoke Python as `pdm run python` (not `python` or `python3`) — the system Python does not have the project's dependencies. All `PYTHONPATH=src python` snippets below should be run as `PYTHONPATH=src pdm run python`.
+
 ### Step 1 — Find the ITCH binary
 
 ```bash
@@ -126,6 +128,8 @@ PYTHONPATH=src python -m itch.itch_runner \
 Replace `ITCH_FILE` with the actual filename, `FEATURE_PUBLISHERS` with the feature's publish list, and `STOP_TIME` with the market time cutoff (see Feature Registry — each feature specifies a default).
 
 **`--max-market-time` vs `--max-msgs`:** Always use `--max-market-time` for time-bounded tests. It stops on the ITCH message timestamp, not a message count, so it reliably captures all messages up to that wall-clock time regardless of file size or market activity. Never use `--max-msgs` for NOII — message counts vary too much to reliably hit the right window.
+
+**`[db] Done: N <feature>` is the final flush only.** itch_runner flushes to Postgres in batches of 1,000 rows throughout the run; the summary line only shows what was in the buffer at the very end. Always use the SQL count query in Step 5 to get the true total — do not judge success or failure from the Done line alone.
 
 ### Step 4b — Run itch_runner + db_consumer (full-pipeline mode)
 
