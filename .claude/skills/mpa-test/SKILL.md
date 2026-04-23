@@ -290,10 +290,45 @@ ORDER BY timestamp_ns LIMIT 5;
 
 ---
 
+### `market_events`
+**Description:** Per-stock trading halts and resumes from ITCH 'H' (Stock Trading Action) messages. Captures `HALT`, `PAUSE` (LULD circuit-breaker), `QUOTATION` (quote-only), and `RESUME` events with their 4-char reason code (e.g. `LUDP`, `MWCB`). Halts occur throughout the trading day; a full-day run is recommended.
+**Publish flag:** `--publish market_events`
+**Tables to clean:** `market_events`
+**Verification queries:**
+
+```sql
+-- Must be > 0
+SELECT count(*) AS cnt FROM market_events WHERE trade_date = '1970-01-01';
+
+-- Event type distribution (HALT, PAUSE, QUOTATION, RESUME)
+SELECT event_type, count(*) AS cnt
+FROM market_events WHERE trade_date = '1970-01-01'
+GROUP BY event_type ORDER BY event_type;
+
+-- Reason code breakdown
+SELECT reason, count(*) AS cnt
+FROM market_events WHERE trade_date = '1970-01-01'
+GROUP BY reason ORDER BY cnt DESC;
+
+-- Halts and resumes should be roughly paired
+SELECT
+    sum(CASE WHEN event_type IN ('HALT', 'PAUSE') THEN 1 ELSE 0 END) AS halts,
+    sum(CASE WHEN event_type = 'RESUME' THEN 1 ELSE 0 END) AS resumes
+FROM market_events WHERE trade_date = '1970-01-01';
+
+-- Sample: first 5 halt events with timestamp
+SELECT ns_to_time(timestamp_ns) AS time, stock, event_type, reason
+FROM market_events
+WHERE trade_date = '1970-01-01' AND event_type IN ('HALT', 'PAUSE')
+ORDER BY timestamp_ns LIMIT 5;
+```
+
+---
+
 ### `all`
-**Description:** Full pipeline — all four features simultaneously.
+**Description:** Full pipeline — all five features simultaneously.
 **Publish flag:** `--publish all`
-**Tables to clean:** `trades`, `tob`, `vwap`, `noii`
+**Tables to clean:** `trades`, `tob`, `vwap`, `noii`, `market_events`
 **Verification queries:** Run all queries from each feature above.
 
 ---
