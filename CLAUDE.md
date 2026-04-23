@@ -208,6 +208,12 @@ src/
 
 ---
 
+## Git workflow
+
+- `main` is branch-protected: **direct pushes are rejected**. Always merge via pull request.
+- Develop on a feature branch, push it, then open a PR targeting `main`.
+- When pulling main changes into a feature branch, prefer `git merge origin/main` over `git rebase` to avoid re-applying old commits that predate earlier merges.
+
 ## Development workflow
 
 ```bash
