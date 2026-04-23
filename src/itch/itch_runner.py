@@ -4,7 +4,7 @@ from pathlib import Path
 
 from itch.itch_feed_handler import ItchFeedHandler
 from util.TimerService import TimerService
-from util.TimeUtil import nanos_to_ms_str
+from util.TimeUtil import nanos_to_us_str
 
 
 def main():
@@ -163,7 +163,7 @@ def main():
                 msg_processed += batch
 
                 if msg_processed % report_interval == 0:
-                    time_str = nanos_to_ms_str(feed_handler.timestamp) if feed_handler.timestamp else '--'
+                    time_str = nanos_to_us_str(feed_handler.timestamp) if feed_handler.timestamp else '--'
                     print(f"  {msg_processed:>12,} messages  books={len(feed_handler.book_map):,}  market_time={time_str}")
 
                 timer_service.check_timers(feed_handler.timestamp)
