@@ -136,52 +136,17 @@ The actual ITCH binary file is passed via `--file` so the parser reads real mark
 
 ---
 
-## Integration test agent
+## Integration testing
 
-The test agent is a Claude-powered program that automates the full pipeline test.
+Use the `mpa-test` Claude Code skill to run integration tests for any feature:
 
-**Install the `anthropic` package first:**
 ```bash
-pdm install  # installs all dependencies including anthropic
+/mpa-test noii      # test NOII (morning cross only, stops at 09:31)
+/mpa-test trades    # test trades
+/mpa-test all       # test full pipeline
 ```
 
-**Run:**
-```bash
-# Load credentials from .env first (MPA_DSN, KAFKA_BOOTSTRAP_SERVERS)
-source .env
-
-PYTHONPATH=src python -m agents.test_agent \
-    --feature noii \
-    --itch-file ./data/04012024.NASDAQ_ITCH50 \
-    --date 04012024 \
-    --test-date 01011970 \
-    --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
-    --dsn "$MPA_DSN"
-```
-
-**Available features:** `trades` | `tob` | `vwap` | `noii` | `all`
-
-**Key flags:**
-
-| Flag | Default | Notes |
-|---|---|---|
-| `--feature` | required | Which feature to test |
-| `--itch-file` | required | Path to ITCH binary |
-| `--date` | required | Actual data date (for logging) |
-| `--test-date` | `01011970` | Test isolation date |
-| `--stocks A B` | all | Filter to specific symbols |
-| `--max-msgs N` | 0 (all) | Limit messages. Avoid for `noii`/`all` |
-| `--consumer-timeout` | 180 | Seconds for db_consumer to run |
-
-**The agent will:**
-1. Check Kafka and Postgres health
-2. Verify the ITCH file exists
-3. Clean up any existing test-date data
-4. Run itch_runner to fill Kafka
-5. Run db_consumer to drain Kafka into Postgres
-6. Check Kafka topic message counts
-7. Run SQL verification queries per feature
-8. Report PASS / FAIL with details
+The skill handles environment loading, pre-flight checks, cleanup, running itch_runner in `--db` mode (no Kafka needed), and SQL verification. See `.claude/skills/mpa-test/SKILL.md` for the full workflow and feature registry.
 
 ---
 
@@ -231,10 +196,6 @@ DELETE FROM noii   WHERE trade_date = '1970-01-01';
 
 ```
 src/
-├── agents/          # Integration test agent (Claude SDK)
-│   ├── test_agent.py        # Main agent entry point
-│   ├── agent_tools.py       # Tool implementations (subprocess, Kafka, Postgres)
-│   └── feature_registry.py  # Per-feature test definitions and verify SQL
 ├── itch/            # ITCH 5.0 parser, feed handler, CLI runners
 ├── book/            # Order book, trade/TOB/NOII models and listener interfaces
 ├── publishers/      # Kafka publishers (trade, tob, vwap, noii)

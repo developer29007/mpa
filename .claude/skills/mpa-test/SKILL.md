@@ -62,7 +62,7 @@ echo "KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
 
 If `MPA_DSN` is not set, stop and ask the user to create a `.env` file.
 
-**Python interpreter:** This project uses PDM. Always invoke Python as `pdm run python` (not `python` or `python3`) — the system Python does not have the project's dependencies. All `PYTHONPATH=src python` snippets below should be run as `PYTHONPATH=src pdm run python`.
+**Python interpreter:** This project uses PDM. Always invoke Python as `pdm run python` (not `python` or `python3`) — the system Python does not have the project's dependencies.
 
 ### Step 1 — Find the ITCH binary
 
@@ -76,7 +76,7 @@ If no file exists, ask the user where the ITCH binary is. Do not proceed without
 
 Check Postgres is reachable:
 ```bash
-PYTHONPATH=src python -c "
+PYTHONPATH=src pdm run python -c "
 import os, psycopg
 conn = psycopg.connect(os.environ['MPA_DSN'], connect_timeout=5)
 conn.close()
@@ -86,7 +86,7 @@ print('Postgres: OK')
 
 For full-pipeline mode, also check Kafka:
 ```bash
-PYTHONPATH=src python -c "
+PYTHONPATH=src pdm run python -c "
 import os
 from confluent_kafka.admin import AdminClient
 admin = AdminClient({'bootstrap.servers': os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'), 'socket.timeout.ms': 5000})
@@ -99,7 +99,7 @@ print('Kafka: OK')
 
 Delete any rows from a prior test run so counts are accurate:
 ```bash
-PYTHONPATH=src python -c "
+PYTHONPATH=src pdm run python -c "
 import os, psycopg
 conn = psycopg.connect(os.environ['MPA_DSN'])
 tables = ['trades', 'tob', 'vwap', 'noii']   # adjust to feature tables below
@@ -117,7 +117,7 @@ Only delete tables relevant to the feature being tested (see Feature Registry be
 ### Step 4a — Run itch_runner (simple mode — preferred)
 
 ```bash
-PYTHONPATH=src python -m itch.itch_runner \
+PYTHONPATH=src pdm run python -m itch.itch_runner \
     --date 01011970 \
     --file ./data/ITCH_FILE.NASDAQ_ITCH50 \
     --db "$MPA_DSN" \
@@ -135,7 +135,7 @@ Replace `ITCH_FILE` with the actual filename, `FEATURE_PUBLISHERS` with the feat
 
 ```bash
 # Terminal 1: publish to Kafka (blocks until done)
-PYTHONPATH=src python -m itch.itch_runner \
+PYTHONPATH=src pdm run python -m itch.itch_runner \
     --date 01011970 \
     --file ./data/ITCH_FILE.NASDAQ_ITCH50 \
     --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
@@ -143,7 +143,7 @@ PYTHONPATH=src python -m itch.itch_runner \
     --max-market-time STOP_TIME
 
 # Terminal 2 / subprocess with timeout: consume from Kafka into Postgres
-PYTHONPATH=src python -m consumers.db_consumer \
+PYTHONPATH=src pdm run python -m consumers.db_consumer \
     --date 01011970 \
     --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
     --dsn "$MPA_DSN" &
@@ -159,7 +159,7 @@ echo "Consumer stopped"
 Run the feature-specific verification queries below. For every `SELECT count(*) AS cnt` query, the result must have `cnt > 0`. For GROUP BY queries, at least one row must be returned.
 
 ```bash
-PYTHONPATH=src python -c "
+PYTHONPATH=src pdm run python -c "
 import os, psycopg
 conn = psycopg.connect(os.environ['MPA_DSN'])
 # paste query here
@@ -302,7 +302,6 @@ ORDER BY timestamp_ns LIMIT 5;
 When a new feature is added to the pipeline, update this skill by adding a new section to the Feature Registry with:
 1. Description
 2. `--publish` flag value
-3. Tables to clean
-4. Verification SQL queries
-
-Also add the feature to `src/agents/feature_registry.py` if using the standalone Python test agent.
+3. Default `--max-market-time` cutoff (if applicable)
+4. Tables to clean
+5. Verification SQL queries
