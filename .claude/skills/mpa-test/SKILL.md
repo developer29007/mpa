@@ -101,11 +101,12 @@ Delete any rows from a prior test run so counts are accurate:
 ```bash
 PYTHONPATH=src pdm run python -c "
 import os, psycopg
+from psycopg import sql
 conn = psycopg.connect(os.environ['MPA_DSN'])
 tables = ['trades', 'tob', 'vwap', 'noii']   # adjust to feature tables below
 for t in tables:
     with conn.cursor() as cur:
-        cur.execute(f\"DELETE FROM {t} WHERE trade_date = '1970-01-01'\")
+        cur.execute(sql.SQL('DELETE FROM {} WHERE trade_date = %s').format(sql.Identifier(t)), ('1970-01-01',))
         print(f'Deleted {cur.rowcount} rows from {t}')
 conn.commit()
 conn.close()
