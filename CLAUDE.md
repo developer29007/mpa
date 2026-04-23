@@ -146,13 +146,16 @@ pdm install  # installs all dependencies including anthropic
 
 **Run:**
 ```bash
+# Load credentials from .env first (MPA_DSN, KAFKA_BOOTSTRAP_SERVERS)
+source .env
+
 PYTHONPATH=src python -m agents.test_agent \
     --feature noii \
     --itch-file ./data/04012024.NASDAQ_ITCH50 \
     --date 04012024 \
     --test-date 01011970 \
-    --kafka localhost:9092 \
-    --dsn postgresql://mpa:mpa@localhost:5432/mpa
+    --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
+    --dsn "$MPA_DSN"
 ```
 
 **Available features:** `trades` | `tob` | `vwap` | `noii` | `all`
@@ -255,16 +258,19 @@ pdm run pytest
 # Lint / type check
 pdm run mypy src/
 
+# Load credentials (copy .env.example → .env and fill in your values)
+source .env
+
 # Run the ITCH runner locally (requires ITCH file in ./data/)
 PYTHONPATH=src python -m itch.itch_runner \
     --date 04012024 \
-    --kafka localhost:9092 \
+    --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
     --stocks AAPL MSFT NVDA \
     --max-msgs 5000000
 
 # Run db_consumer locally
 PYTHONPATH=src python -m consumers.db_consumer \
     --date 04012024 \
-    --kafka localhost:9092 \
-    --dsn postgresql://mpa:mpa@localhost:5432/mpa
+    --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
+    --dsn "$MPA_DSN"
 ```

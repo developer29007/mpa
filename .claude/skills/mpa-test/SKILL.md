@@ -13,8 +13,25 @@ itch_runner   ──→  [--kafka]  →  Kafka topics  →  db_consumer  →  Po
 ```
 
 Two modes are available:
-- **Simple mode** (`--db DSN`): itch_runner writes directly to Postgres. One process, no Kafka needed. Preferred for feature testing.
+- **Simple mode** (`--db $MPA_DSN`): itch_runner writes directly to Postgres. One process, no Kafka needed. Preferred for feature testing.
 - **Full-pipeline mode** (`--kafka` + `db_consumer`): tests the complete Kafka pipeline. Use when testing the consumer or broker integration.
+
+---
+
+## Connection settings
+
+All commands read connection strings from environment variables. **Before running any step**, load `.env`:
+
+```bash
+[ -f .env ] && set -a && source .env && set +a
+```
+
+| Variable | Used for |
+|----------|----------|
+| `MPA_DSN` | Postgres DSN (`postgresql://user:pass@host:5432/mpa`) |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka broker address (`host:9092`) |
+
+Copy `.env.example` to `.env` and fill in your credentials. The `.env` file is gitignored and must never be committed.
 
 ---
 
@@ -31,17 +48,19 @@ DELETE FROM vwap  WHERE trade_date = '1970-01-01';
 
 ---
 
-## Default connection settings
-
-| Service  | Default |
-|----------|---------|
-| Postgres | `postgresql://mpa:mpa@localhost:5432/mpa` |
-| Kafka    | `localhost:9092` |
-| ITCH dir | `./data/` |
-
----
-
 ## Step-by-step test workflow
+
+### Step 0 — Load environment
+
+Run this once at the start of every test session before any other step:
+
+```bash
+[ -f .env ] && set -a && source .env && set +a
+echo "MPA_DSN=${MPA_DSN:?'ERROR: MPA_DSN not set — copy .env.example to .env and fill in credentials'}"
+echo "KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
+```
+
+If `MPA_DSN` is not set, stop and ask the user to create a `.env` file.
 
 ### Step 1 — Find the ITCH binary
 
@@ -56,8 +75,8 @@ If no file exists, ask the user where the ITCH binary is. Do not proceed without
 Check Postgres is reachable:
 ```bash
 PYTHONPATH=src python -c "
-import psycopg
-conn = psycopg.connect('postgresql://mpa:mpa@localhost:5432/mpa', connect_timeout=5)
+import os, psycopg
+conn = psycopg.connect(os.environ['MPA_DSN'], connect_timeout=5)
 conn.close()
 print('Postgres: OK')
 "
@@ -66,8 +85,9 @@ print('Postgres: OK')
 For full-pipeline mode, also check Kafka:
 ```bash
 PYTHONPATH=src python -c "
+import os
 from confluent_kafka.admin import AdminClient
-admin = AdminClient({'bootstrap.servers': 'localhost:9092', 'socket.timeout.ms': 5000})
+admin = AdminClient({'bootstrap.servers': os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092'), 'socket.timeout.ms': 5000})
 admin.list_topics(timeout=5)
 print('Kafka: OK')
 "
@@ -78,8 +98,8 @@ print('Kafka: OK')
 Delete any rows from a prior test run so counts are accurate:
 ```bash
 PYTHONPATH=src python -c "
-import psycopg
-conn = psycopg.connect('postgresql://mpa:mpa@localhost:5432/mpa')
+import os, psycopg
+conn = psycopg.connect(os.environ['MPA_DSN'])
 tables = ['trades', 'tob', 'vwap', 'noii']   # adjust to feature tables below
 for t in tables:
     with conn.cursor() as cur:
@@ -98,7 +118,7 @@ Only delete tables relevant to the feature being tested (see Feature Registry be
 PYTHONPATH=src python -m itch.itch_runner \
     --date 01011970 \
     --file ./data/ITCH_FILE.NASDAQ_ITCH50 \
-    --db postgresql://mpa:mpa@localhost:5432/mpa \
+    --db "$MPA_DSN" \
     --publish FEATURE_PUBLISHERS
 ```
 
@@ -113,14 +133,14 @@ Replace `ITCH_FILE` with the actual filename and `FEATURE_PUBLISHERS` with the f
 PYTHONPATH=src python -m itch.itch_runner \
     --date 01011970 \
     --file ./data/ITCH_FILE.NASDAQ_ITCH50 \
-    --kafka localhost:9092 \
+    --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
     --publish FEATURE_PUBLISHERS
 
 # Terminal 2 / subprocess with timeout: consume from Kafka into Postgres
 PYTHONPATH=src python -m consumers.db_consumer \
     --date 01011970 \
-    --kafka localhost:9092 \
-    --dsn postgresql://mpa:mpa@localhost:5432/mpa &
+    --kafka "$KAFKA_BOOTSTRAP_SERVERS" \
+    --dsn "$MPA_DSN" &
 CONSUMER_PID=$!
 sleep 120        # wait for consumer to drain all messages
 kill $CONSUMER_PID 2>/dev/null
@@ -134,8 +154,8 @@ Run the feature-specific verification queries below. For every `SELECT count(*) 
 
 ```bash
 PYTHONPATH=src python -c "
-import psycopg
-conn = psycopg.connect('postgresql://mpa:mpa@localhost:5432/mpa')
+import os, psycopg
+conn = psycopg.connect(os.environ['MPA_DSN'])
 # paste query here
 with conn.cursor() as cur:
     cur.execute('QUERY HERE', {'date': '1970-01-01'})
@@ -151,6 +171,7 @@ Print a summary table:
 
 | Check | Result |
 |-------|--------|
+| .env loaded / MPA_DSN set | PASS / FAIL |
 | Postgres health | PASS / FAIL |
 | ITCH file exists | PASS / FAIL |
 | Test data cleaned | PASS / FAIL |
