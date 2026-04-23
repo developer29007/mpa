@@ -5,7 +5,6 @@ from typing import Optional
 
 from book.market_event import (
     MarketEvent,
-    EVENT_OPEN_CROSS, EVENT_CLOSE_CROSS, EVENT_IPO_CROSS, EVENT_INTRADAY_CROSS,
     EVENT_HALT, EVENT_PAUSE, EVENT_QUOTATION, EVENT_RESUME,
 )
 from book.market_event_listener import MarketEventListener
@@ -16,13 +15,6 @@ from book.trade import TRADE_TYPE_OPEN_CROSS, TRADE_TYPE_CLOSE_CROSS, TRADE_TYPE
 from book.trade_listener import TradeListener
 from itch.itch_listener import ItchListener
 from itch.itch_parser import ItchParser
-
-_CROSS_TYPE_TO_EVENT: dict[str, str] = {
-    'O': EVENT_OPEN_CROSS,
-    'C': EVENT_CLOSE_CROSS,
-    'H': EVENT_IPO_CROSS,
-    'I': EVENT_INTRADAY_CROSS,
-}
 
 _TRADING_STATE_TO_EVENT: dict[str, str] = {
     'H': EVENT_HALT,
@@ -172,16 +164,6 @@ class ItchFeedHandler(ItchListener):
         order_book = self._get_or_create_book(stock)
         if order_book:
             order_book.record_cross_trade(shares, cross_price, match_number, get_trade_type(cross_type), timestamp_ns)
-        event_type = _CROSS_TYPE_TO_EVENT.get(cross_type)
-        if event_type and self._stock_allowed(stock):
-            self._notify_market_event(MarketEvent(
-                timestamp_ns=timestamp_ns,
-                stock=stock,
-                event_type=event_type,
-                trade_date=self.trade_date,
-                price=cross_price / 10000.0,
-                shares=shares,
-            ))
 
     def handle_order_cancel(self, order_id: int, cancelled_shares: int, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)

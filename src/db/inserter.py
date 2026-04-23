@@ -45,11 +45,9 @@ TOB_INSERT = """
 
 MARKET_EVENT_INSERT = """
     INSERT INTO market_events (
-        trade_date, msg_id, timestamp_ns, event_type, stock,
-        price, shares, reason
+        trade_date, msg_id, timestamp_ns, event_type, stock, reason
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(event_type)s, %(stock)s,
-        %(price)s, %(shares)s, %(reason)s
+        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(event_type)s, %(stock)s, %(reason)s
     ) ON CONFLICT (msg_id, trade_date) DO NOTHING
 """
 
@@ -93,7 +91,6 @@ class DbInserter:
             return
         for e in events:
             e["trade_date"] = self._trade_date
-            e["price"] = _nan_to_none(e["price"])
         with self._conn.cursor() as cur:
             cur.executemany(MARKET_EVENT_INSERT, events)
 

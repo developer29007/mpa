@@ -55,20 +55,16 @@ CREATE TABLE IF NOT EXISTS tob (
 
 CREATE INDEX IF NOT EXISTS idx_tob_stock_time ON tob (stock, timestamp_ns);
 
--- Market events: opening/closing auction prices and per-stock halts/resumes.
--- Sources:
---   ITCH 'Q' Cross Trade    → OPEN_CROSS, CLOSE_CROSS, IPO_CROSS, INTRADAY_CROSS
---   ITCH 'H' Trading Action → HALT, PAUSE, QUOTATION, RESUME
--- price/shares are populated for cross events; NULL/0 for halt events.
--- reason is populated for halt events (e.g. 'LUDP', 'MWCB'); empty for crosses.
+-- Market events: per-stock trading halts and resumes from ITCH 'H' Stock Trading Action.
+-- event_type: HALT, PAUSE (LULD), QUOTATION (quote-only), RESUME
+-- reason: 4-char ITCH reason code (e.g. 'LUDP', 'MWCB', 'SEC ')
+-- Note: opening/closing auction prices are stored in the trades table (trade_type='O'/'C').
 CREATE TABLE IF NOT EXISTS market_events (
     trade_date      DATE             NOT NULL,
     msg_id          BIGINT           NOT NULL,
     timestamp_ns    BIGINT           NOT NULL,
     event_type      VARCHAR(16)      NOT NULL,
     stock           VARCHAR(8)       NOT NULL DEFAULT '',
-    price           DOUBLE PRECISION,           -- auction cross price; NULL for halt/resume events
-    shares          BIGINT           NOT NULL DEFAULT 0,
     reason          VARCHAR(4)       NOT NULL DEFAULT '',
     UNIQUE (msg_id, trade_date)
 ) PARTITION BY RANGE (trade_date);
