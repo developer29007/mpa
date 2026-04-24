@@ -32,7 +32,8 @@ CANDLE_MSG_TYPE = 'C'
 
 def _serialize_candle(bucket_start_ns: int, stock: str, bucket: CandleBucket) -> bytes:
     stock_bytes = stock.encode('ascii').ljust(8)
-    vwap = bucket.vwap() if bucket.vwap() is not None else math.nan
+    _vwap = bucket.vwap()
+    vwap = _vwap if _vwap is not None else math.nan
     return struct.pack(
         CANDLE_FORMAT,
         next_id(),
@@ -96,8 +97,6 @@ class CandlePublisher(TradeListener, TimerListener, KafkaPublisher):
 
         for stock, bucket in self._buckets.items():
             bucket_start = self._bucket_start.get(stock, boundary_ns)
-            # Only publish buckets that belong to the just-closed interval.
-            # Buckets already published by on_trade have bucket_start >= boundary_ns and are skipped.
             if bucket_start < boundary_ns and not bucket.is_empty:
                 payload = _serialize_candle(bucket_start, stock, bucket)
                 self._publish(CANDLE_MSG_TYPE, payload)

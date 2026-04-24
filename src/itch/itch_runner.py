@@ -212,8 +212,7 @@ def main():
         candle_pub.flush()
 
     if db_listener:
-        trades, vwaps, tobs, noii, market_events, candles = db_listener.flush()
-        db_conn.commit()
+        trades, vwaps, tobs, noii, market_events, candles = db_listener.flush(final=True)
         db_conn.close()
         print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii, "
               f"{market_events} market_events, {candles} candles")

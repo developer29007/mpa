@@ -165,7 +165,7 @@ class _CandleTimerHelper(TimerListener):
         if prev_ns is not None and prev_ns != bucket_ns:
             bucket = self._buckets[stock]
             if not bucket.is_empty:
-                self._candle_buf.append(_bucket_to_candle_dict(prev_ns, stock.strip(), bucket))
+                self._candle_buf.append(_bucket_to_candle_dict(prev_ns, stock, bucket))
             self._buckets[stock] = CandleBucket(self._interval_ms)
 
         if stock not in self._buckets:
@@ -185,17 +185,18 @@ class _CandleTimerHelper(TimerListener):
         for stock, bucket in self._buckets.items():
             bucket_start = self._bucket_start.get(stock, boundary_ns)
             if bucket_start < boundary_ns and not bucket.is_empty:
-                self._candle_buf.append(_bucket_to_candle_dict(bucket_start, stock.strip(), bucket))
+                self._candle_buf.append(_bucket_to_candle_dict(bucket_start, stock, bucket))
                 self._buckets[stock] = CandleBucket(self._interval_ms)
                 self._bucket_start[stock] = boundary_ns
         TimerService.instance().add_timer(self._interval_ns, boundary_ns, self)
 
     def flush_remaining(self) -> None:
-        """Append any still-open buckets to the buffer (called at end of run)."""
+        """Drain any still-open buckets into the buffer. Call only at end of run."""
         for stock, bucket in self._buckets.items():
             if not bucket.is_empty:
                 bucket_ns = self._bucket_start.get(stock, 0)
-                self._candle_buf.append(_bucket_to_candle_dict(bucket_ns, stock.strip(), bucket))
+                self._candle_buf.append(_bucket_to_candle_dict(bucket_ns, stock, bucket))
+                self._buckets[stock] = CandleBucket(self._interval_ms)
 
 
 class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventListener):
@@ -212,7 +213,6 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventList
     def __init__(self, inserter: DbInserter,
                  vwap_interval_ms_list: list[int] | None = None,
                  candle_interval_ms_list: list[int] | None = None,
-                 interval_ms_list: list[int] | None = None,
                  batch_size: int = 1000):
         self._inserter = inserter
         self._batch_size = batch_size
@@ -222,9 +222,7 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventList
         self._noii_buf: list[dict] = []
         self._market_event_buf: list[dict] = []
         self._candle_buf: list[dict] = []
-        # interval_ms_list is the legacy name for vwap_interval_ms_list
-        vwap_intervals = vwap_interval_ms_list or interval_ms_list or []
-        self._vwap_timers = [_VwapTimerHelper(ms, self._vwap_buf) for ms in vwap_intervals]
+        self._vwap_timers = [_VwapTimerHelper(ms, self._vwap_buf) for ms in (vwap_interval_ms_list or [])]
         self._candle_timers = [_CandleTimerHelper(ms, self._candle_buf)
                                for ms in (candle_interval_ms_list or [])]
 
@@ -283,14 +281,15 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventList
         if self.pending_count >= self._batch_size:
             self.flush()
 
-    def flush(self) -> tuple[int, int, int, int, int, int]:
+    def flush(self, final: bool = False) -> tuple[int, int, int, int, int, int]:
         """Flush all buffered records to the DB.
 
         Returns (trades, vwaps, tobs, noii, market_events, candles) counts.
-        Drains any still-open candle buckets from timer helpers before flushing.
+        Pass final=True at end of run to also drain still-open candle buckets.
         """
-        for timer in self._candle_timers:
-            timer.flush_remaining()
+        if final:
+            for timer in self._candle_timers:
+                timer.flush_remaining()
         counts = (len(self._trade_buf), len(self._vwap_buf), len(self._tob_buf),
                   len(self._noii_buf), len(self._market_event_buf), len(self._candle_buf))
         if not any(counts):
