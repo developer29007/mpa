@@ -223,6 +223,60 @@ class TestCandlePublisherTimer:
         TimerService.instance().check_timers(120_000_000_000)  # fires at 120 s
         assert mock_publish.call_count == 2  # bucket 1 published by timer
 
+    @patch('publishers.candle_publisher.KafkaPublisher.__init__', return_value=None)
+    @patch('publishers.candle_publisher.KafkaPublisher._publish')
+    def test_no_timer_cascade_when_time_now_far_ahead_of_boundary(self, mock_publish, _mock_init):
+        """When time_now is several intervals past the boundary, on_timer_expired
+        must fire exactly once and jump directly to the next boundary after
+        time_now — not cascade one interval at a time."""
+        pub = CandlePublisher('localhost:9092', 'candles', _1MIN_MS)
+        pub.on_trade(make_trade(10_000_000_000, 100, 100.0))  # bucket 0 (0-60 s)
+
+        # Spy on on_timer_expired to count invocations
+        original_expire = pub.on_timer_expired
+        expire_count = [0]
+        def tracking_expire(*args):
+            expire_count[0] += 1
+            return original_expire(*args)
+        pub.on_timer_expired = tracking_expire
+
+        # time_now is 5 min 30 s — 5 full intervals past the first boundary (60 s).
+        # Without the fix, the timer would cascade through boundaries at 60, 120,
+        # 180, 240, 300 s, calling on_timer_expired 5 times.
+        time_now_ns = 5 * _1MIN_NS + 30_000_000_000  # 330 s
+        TimerService.instance().check_timers(time_now_ns)
+
+        assert expire_count[0] == 1               # fired exactly once
+        assert mock_publish.call_count == 1       # only the 0-60 s bucket published
+
+    @patch('publishers.candle_publisher.KafkaPublisher.__init__', return_value=None)
+    @patch('publishers.candle_publisher.KafkaPublisher._publish')
+    def test_timer_re_registers_at_next_boundary_after_time_now(self, mock_publish, _mock_init):
+        """After firing with a large gap, the next timer fires at the first
+        epoch boundary AFTER time_now, and a trade arriving in that window
+        is published in the correct bucket."""
+        pub = CandlePublisher('localhost:9092', 'candles', _1MIN_MS)
+        pub.on_trade(make_trade(10_000_000_000, 100, 100.0))  # bucket 0 (0-60 s)
+
+        # Fire timer with time_now = 330 s (gap of 4.5 min after first boundary)
+        time_now_ns = 5 * _1MIN_NS + 30_000_000_000  # 330 s
+        TimerService.instance().check_timers(time_now_ns)
+        assert mock_publish.call_count == 1  # bucket 0 published
+
+        # A trade arriving at 340 s lands in the 300-360 s bucket
+        pub.on_trade(make_trade(340_000_000_000, 50, 200.0))
+
+        # Next boundary after time_now=330 s is 360 s; timer should fire there
+        next_boundary_ns = 6 * _1MIN_NS  # 360 s
+        TimerService.instance().check_timers(next_boundary_ns)
+        assert mock_publish.call_count == 2  # 300-360 s bucket published
+
+        # Verify the second candle covers the 300-360 s window
+        _, payload = mock_publish.call_args[0]
+        _, bucket_start_ns, _, _, open_, *_ = unpack_candle(payload)
+        assert bucket_start_ns == 5 * _1MIN_NS  # 300 s
+        assert open_ == pytest.approx(200.0)
+
 
 # ---------------------------------------------------------------------------
 # Publisher — flush
