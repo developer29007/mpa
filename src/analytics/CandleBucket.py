@@ -3,8 +3,9 @@ from book.trade import Trade
 
 class CandleBucket:
 
-    def __init__(self, interval_ms: int):
+    def __init__(self, interval_ms: int, bucket_start_ns: int = 0):
         self.interval_ms: int = interval_ms
+        self.bucket_start_ns: int = bucket_start_ns
         self.open: float | None = None
         self.high: float | None = None
         self.low: float | None = None

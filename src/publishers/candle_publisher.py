@@ -30,14 +30,14 @@ CANDLE_FORMAT = '>QQ8sIddddddIIIII'
 CANDLE_MSG_TYPE = 'C'
 
 
-def _serialize_candle(bucket_start_ns: int, stock: str, bucket: CandleBucket) -> bytes:
+def _serialize_candle(stock: str, bucket: CandleBucket) -> bytes:
     stock_bytes = stock.encode('ascii').ljust(8)
     _vwap = bucket.vwap()
     vwap = _vwap if _vwap is not None else math.nan
     return struct.pack(
         CANDLE_FORMAT,
         next_id(),
-        bucket_start_ns,
+        bucket.bucket_start_ns,
         stock_bytes,
         bucket.interval_ms,
         bucket.open,
@@ -61,33 +61,27 @@ class CandlePublisher(TradeListener, TimerListener, KafkaPublisher):
         self._interval_ms = interval_ms
         self._interval_ns = ms_to_nanos(interval_ms)
         self._buckets: dict[str, CandleBucket] = {}
-        self._bucket_start: dict[str, int] = {}  # stock -> current bucket start ns
         self._timer_registered = False
 
-    def _bucket_start_ns(self, timestamp_ns: int) -> int:
+    def _calc_bucket_start_ns(self, timestamp_ns: int) -> int:
         return (timestamp_ns // self._interval_ns) * self._interval_ns
 
     def on_trade(self, trade: Trade):
         stock = trade.sec_id
-        bucket_ns = self._bucket_start_ns(trade.timestamp_ns)
+        bucket_start_ns = self._calc_bucket_start_ns(trade.timestamp_ns)
 
-        prev_ns = self._bucket_start.get(stock)
-        if prev_ns is not None and prev_ns != bucket_ns:
-            bucket = self._buckets[stock]
-            if not bucket.is_empty:
-                payload = _serialize_candle(prev_ns, stock, bucket)
-                self._publish(CANDLE_MSG_TYPE, payload)
-            self._buckets[stock] = CandleBucket(self._interval_ms)
-
-        if stock not in self._buckets:
-            self._buckets[stock] = CandleBucket(self._interval_ms)
+        prev_bucket = self._buckets.get(stock)
+        if prev_bucket is not None and prev_bucket.bucket_start_ns != bucket_start_ns:
+            if not prev_bucket.is_empty:
+                self._publish(CANDLE_MSG_TYPE, _serialize_candle(stock, prev_bucket))
+            self._buckets[stock] = CandleBucket(self._interval_ms, bucket_start_ns)
+        elif stock not in self._buckets:
+            self._buckets[stock] = CandleBucket(self._interval_ms, bucket_start_ns)
 
         self._buckets[stock].add_trade(trade)
-        self._bucket_start[stock] = bucket_ns
 
         if not self._timer_registered:
-            # Align the first timer to the next epoch boundary (e.g. the next whole minute)
-            first_boundary_ns = (bucket_ns + self._interval_ns)
+            first_boundary_ns = bucket_start_ns + self._interval_ns
             delay_ns = first_boundary_ns - trade.timestamp_ns
             TimerService.instance().add_timer(delay_ns, trade.timestamp_ns, self)
             self._timer_registered = True
@@ -96,19 +90,14 @@ class CandlePublisher(TradeListener, TimerListener, KafkaPublisher):
         boundary_ns = scheduled_time + time_interval
 
         for stock, bucket in self._buckets.items():
-            bucket_start = self._bucket_start.get(stock, boundary_ns)
-            if bucket_start < boundary_ns and not bucket.is_empty:
-                payload = _serialize_candle(bucket_start, stock, bucket)
-                self._publish(CANDLE_MSG_TYPE, payload)
-                self._buckets[stock] = CandleBucket(self._interval_ms)
-                self._bucket_start[stock] = boundary_ns
+            if bucket.bucket_start_ns < boundary_ns and not bucket.is_empty:
+                self._publish(CANDLE_MSG_TYPE, _serialize_candle(stock, bucket))
+                self._buckets[stock] = CandleBucket(self._interval_ms, boundary_ns)
 
         TimerService.instance().add_timer(self._interval_ns, boundary_ns, self)
 
     def flush(self):
         for stock, bucket in self._buckets.items():
             if not bucket.is_empty:
-                bucket_ns = self._bucket_start.get(stock, 0)
-                payload = _serialize_candle(bucket_ns, stock, bucket)
-                self._publish(CANDLE_MSG_TYPE, payload)
+                self._publish(CANDLE_MSG_TYPE, _serialize_candle(stock, bucket))
         super().flush()

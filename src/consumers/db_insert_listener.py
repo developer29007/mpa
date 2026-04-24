@@ -90,11 +90,11 @@ def _bucket_to_vwap_dict(timestamp_ns: int, stock: str, bucket: VwapBucket) -> d
     }
 
 
-def _bucket_to_candle_dict(bucket_start_ns: int, stock: str, bucket: CandleBucket) -> dict:
+def _bucket_to_candle_dict(stock: str, bucket: CandleBucket) -> dict:
     vwap = bucket.vwap()
     return {
         "msg_id": next_id(),
-        "timestamp_ns": bucket_start_ns,
+        "timestamp_ns": bucket.bucket_start_ns,
         "stock": stock,
         "interval_ms": bucket.interval_ms,
         "open": bucket.open,
@@ -150,32 +150,28 @@ class _CandleTimerHelper(TimerListener):
         self._interval_ms = interval_ms
         self._interval_ns = ms_to_nanos(interval_ms)
         self._buckets: dict[str, CandleBucket] = {}
-        self._bucket_start: dict[str, int] = {}
         self._candle_buf = candle_buf
         self._timer_registered = False
 
-    def _bucket_start_ns(self, timestamp_ns: int) -> int:
+    def _calc_bucket_start_ns(self, timestamp_ns: int) -> int:
         return (timestamp_ns // self._interval_ns) * self._interval_ns
 
     def add_trade(self, trade: Trade) -> None:
         stock = trade.sec_id
-        bucket_ns = self._bucket_start_ns(trade.timestamp_ns)
+        bucket_start_ns = self._calc_bucket_start_ns(trade.timestamp_ns)
 
-        prev_ns = self._bucket_start.get(stock)
-        if prev_ns is not None and prev_ns != bucket_ns:
-            bucket = self._buckets[stock]
-            if not bucket.is_empty:
-                self._candle_buf.append(_bucket_to_candle_dict(prev_ns, stock, bucket))
-            self._buckets[stock] = CandleBucket(self._interval_ms)
-
-        if stock not in self._buckets:
-            self._buckets[stock] = CandleBucket(self._interval_ms)
+        prev_bucket = self._buckets.get(stock)
+        if prev_bucket is not None and prev_bucket.bucket_start_ns != bucket_start_ns:
+            if not prev_bucket.is_empty:
+                self._candle_buf.append(_bucket_to_candle_dict(stock, prev_bucket))
+            self._buckets[stock] = CandleBucket(self._interval_ms, bucket_start_ns)
+        elif stock not in self._buckets:
+            self._buckets[stock] = CandleBucket(self._interval_ms, bucket_start_ns)
 
         self._buckets[stock].add_trade(trade)
-        self._bucket_start[stock] = bucket_ns
 
         if not self._timer_registered:
-            first_boundary_ns = bucket_ns + self._interval_ns
+            first_boundary_ns = bucket_start_ns + self._interval_ns
             delay_ns = first_boundary_ns - trade.timestamp_ns
             TimerService.instance().add_timer(delay_ns, trade.timestamp_ns, self)
             self._timer_registered = True
@@ -183,20 +179,17 @@ class _CandleTimerHelper(TimerListener):
     def on_timer_expired(self, time_interval: int, scheduled_time: int, time_now: int) -> None:
         boundary_ns = scheduled_time + time_interval
         for stock, bucket in self._buckets.items():
-            bucket_start = self._bucket_start.get(stock, boundary_ns)
-            if bucket_start < boundary_ns and not bucket.is_empty:
-                self._candle_buf.append(_bucket_to_candle_dict(bucket_start, stock, bucket))
-                self._buckets[stock] = CandleBucket(self._interval_ms)
-                self._bucket_start[stock] = boundary_ns
+            if bucket.bucket_start_ns < boundary_ns and not bucket.is_empty:
+                self._candle_buf.append(_bucket_to_candle_dict(stock, bucket))
+                self._buckets[stock] = CandleBucket(self._interval_ms, boundary_ns)
         TimerService.instance().add_timer(self._interval_ns, boundary_ns, self)
 
     def flush_remaining(self) -> None:
         """Drain any still-open buckets into the buffer. Call only at end of run."""
         for stock, bucket in self._buckets.items():
             if not bucket.is_empty:
-                bucket_ns = self._bucket_start.get(stock, 0)
-                self._candle_buf.append(_bucket_to_candle_dict(bucket_ns, stock, bucket))
-                self._buckets[stock] = CandleBucket(self._interval_ms)
+                self._candle_buf.append(_bucket_to_candle_dict(stock, bucket))
+                self._buckets[stock] = CandleBucket(self._interval_ms, bucket.bucket_start_ns)
 
 
 class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventListener):

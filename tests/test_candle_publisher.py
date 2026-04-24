@@ -40,21 +40,21 @@ def reset_timer_service():
 
 class TestCandleSerializationSize:
     def test_payload_is_correct_size(self):
-        b = CandleBucket(_1MIN_MS)
+        b = CandleBucket(_1MIN_MS, bucket_start_ns=0)
         b.add_trade(make_trade(0, 100, 150.0))
-        data = _serialize_candle(0, "AAPL", b)
+        data = _serialize_candle("AAPL", b)
         assert len(data) == struct.calcsize(CANDLE_FORMAT)
 
 
 class TestCandleSerializationRoundTrip:
     def test_all_fields_round_trip(self):
-        b = CandleBucket(_1MIN_MS)
+        BUCKET_START = 1_000_000_000
+        b = CandleBucket(_1MIN_MS, bucket_start_ns=BUCKET_START)
         b.add_trade(make_trade(0,  100, 150.0, side="B"))   # offer_vol += 100
         b.add_trade(make_trade(1,   50, 160.0, side="S"))   # bid_vol   +=  50
         b.add_trade(make_trade(2,   25,  80.0, side=""))    # auction_vol+= 25
 
-        BUCKET_START = 1_000_000_000
-        data = _serialize_candle(BUCKET_START, "AAPL", b)
+        data = _serialize_candle("AAPL", b)
         (msg_id, ts, stock, interval_ms,
          open_, high, low, close,
          dollar_vol, vwap,
@@ -79,20 +79,20 @@ class TestCandleSerializationRoundTrip:
     def test_msg_id_is_positive(self):
         b = CandleBucket(_1MIN_MS)
         b.add_trade(make_trade(0, 10, 100.0))
-        (msg_id, *_) = unpack_candle(_serialize_candle(0, "AAPL", b))
+        (msg_id, *_) = unpack_candle(_serialize_candle("AAPL", b))
         assert msg_id > 0
 
     def test_msg_ids_are_unique(self):
         b = CandleBucket(_1MIN_MS)
         b.add_trade(make_trade(0, 10, 100.0))
-        id1, *_ = unpack_candle(_serialize_candle(0, "AAPL", b))
-        id2, *_ = unpack_candle(_serialize_candle(0, "AAPL", b))
+        id1, *_ = unpack_candle(_serialize_candle("AAPL", b))
+        id2, *_ = unpack_candle(_serialize_candle("AAPL", b))
         assert id1 != id2
 
     def test_stock_symbol_padded_to_8_bytes(self):
         b = CandleBucket(_1MIN_MS)
         b.add_trade(make_trade(0, 10, 100.0))
-        _, _, stock, *_ = unpack_candle(_serialize_candle(0, "T", b))
+        _, _, stock, *_ = unpack_candle(_serialize_candle("T", b))
         assert stock == b'T       '
 
 
