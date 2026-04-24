@@ -55,6 +55,66 @@ CREATE TABLE IF NOT EXISTS tob (
 
 CREATE INDEX IF NOT EXISTS idx_tob_stock_time ON tob (stock, timestamp_ns);
 
+CREATE TABLE IF NOT EXISTS noii (
+    trade_date                DATE             NOT NULL,
+    msg_id                    BIGINT           NOT NULL,
+    timestamp_ns              BIGINT           NOT NULL,
+    stock                     VARCHAR(8)       NOT NULL,
+    paired_shares             BIGINT           NOT NULL,
+    imbalance_shares          BIGINT           NOT NULL,
+    imbalance_direction       CHAR(1)          NOT NULL,
+    far_price                 DOUBLE PRECISION,
+    near_price                DOUBLE PRECISION,
+    current_reference_price   DOUBLE PRECISION NOT NULL,
+    cross_type                CHAR(1)          NOT NULL,
+    price_variation_indicator CHAR(1)          NOT NULL,
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_noii_stock_cross ON noii (stock, cross_type, timestamp_ns);
+
+-- Market events: per-stock trading halts and resumes from ITCH 'H' Stock Trading Action.
+-- event_type: HALT, PAUSE (LULD), QUOTATION (quote-only), RESUME
+-- reason: 4-char ITCH reason code (e.g. 'LUDP', 'MWCB', 'SEC ')
+-- Note: opening/closing auction prices are stored in the trades table (trade_type='O'/'C').
+CREATE TABLE IF NOT EXISTS market_events (
+    trade_date      DATE             NOT NULL,
+    msg_id          BIGINT           NOT NULL,
+    timestamp_ns    BIGINT           NOT NULL,
+    event_type      VARCHAR(16)      NOT NULL,
+    stock           VARCHAR(8)       NOT NULL DEFAULT '',
+    reason          VARCHAR(4)       NOT NULL DEFAULT '',
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_market_events_stock_date
+    ON market_events (stock, trade_date, timestamp_ns);
+
+-- OHLCV candles with VWAP and bid/offer/auction volume breakdown.
+-- timestamp_ns is the bucket START time (epoch-aligned to interval_ms).
+-- dollar_volume = sum(price * shares) within the bucket; enables cross-bucket aggregation.
+CREATE TABLE IF NOT EXISTS candles (
+    trade_date      DATE             NOT NULL,
+    msg_id          BIGINT           NOT NULL,
+    timestamp_ns    BIGINT           NOT NULL,
+    stock           VARCHAR(8)       NOT NULL,
+    interval_ms     INTEGER          NOT NULL,
+    open            DOUBLE PRECISION NOT NULL,
+    high            DOUBLE PRECISION NOT NULL,
+    low             DOUBLE PRECISION NOT NULL,
+    close           DOUBLE PRECISION NOT NULL,
+    dollar_volume   DOUBLE PRECISION NOT NULL,
+    vwap            DOUBLE PRECISION,
+    total_vol       INTEGER          NOT NULL,
+    bid_vol         INTEGER          NOT NULL,
+    offer_vol       INTEGER          NOT NULL,
+    auction_vol     INTEGER          NOT NULL,
+    trade_count     INTEGER          NOT NULL,
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_candles_stock_interval ON candles (stock, interval_ms, timestamp_ns);
+
 -- Helper: convert 'HH:MM:SS' or 'HH:MM:SS.mmm' to nanoseconds since midnight.
 -- Usage: time_to_ns('10:32:00') → 37920000000000
 CREATE OR REPLACE FUNCTION time_to_ns(t TEXT) RETURNS BIGINT AS $$

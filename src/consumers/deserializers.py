@@ -1,8 +1,25 @@
 import struct
 
+from publishers.candle_publisher import CANDLE_FORMAT
+from publishers.market_event_publisher import MARKET_EVENT_FORMAT
 from publishers.trade_publisher import TRADE_FORMAT
 from publishers.vwap_publisher import VWAP_FORMAT
 from publishers.tob_publisher import TOB_FORMAT
+from publishers.noii_publisher import NOII_FORMAT
+
+
+def deserialize_market_event(payload: bytes) -> dict:
+    """Deserialize binary market event payload."""
+    (
+        msg_id, timestamp_ns, stock, event_type, reason,
+    ) = struct.unpack(MARKET_EVENT_FORMAT, payload)
+    return {
+        "msg_id": msg_id,
+        "timestamp_ns": timestamp_ns,
+        "stock": stock.decode("ascii").strip(),
+        "event_type": event_type.decode("ascii").strip(),
+        "reason": reason.decode("ascii").strip(),
+    }
 
 
 def deserialize_trade(payload: bytes) -> dict:
@@ -64,4 +81,52 @@ def deserialize_tob(payload: bytes) -> dict:
         "last_trade_side": last_trade_side.decode("ascii"),
         "last_trade_type": last_trade_type.decode("ascii"),
         "last_trade_match_id": last_trade_match_id,
+    }
+
+
+def deserialize_noii(payload: bytes) -> dict:
+    """Deserialize binary NOII payload."""
+    (
+        msg_id, timestamp_ns, stock, paired_shares, imbalance_shares,
+        far_price, near_price, current_reference_price,
+        imbalance_direction, cross_type, price_variation_indicator,
+    ) = struct.unpack(NOII_FORMAT, payload)
+    return {
+        "msg_id": msg_id,
+        "timestamp_ns": timestamp_ns,
+        "stock": stock.decode("ascii").strip(),
+        "paired_shares": paired_shares,
+        "imbalance_shares": imbalance_shares,
+        "far_price": far_price,
+        "near_price": near_price,
+        "current_reference_price": current_reference_price,
+        "imbalance_direction": imbalance_direction.decode("ascii"),
+        "cross_type": cross_type.decode("ascii"),
+        "price_variation_indicator": price_variation_indicator.decode("ascii"),
+    }
+
+
+def deserialize_candle(payload: bytes) -> dict:
+    """Deserialize binary candle payload."""
+    (
+        msg_id, timestamp_ns, stock, interval_ms,
+        open_, high, low, close, dollar_volume, vwap,
+        total_vol, bid_vol, offer_vol, auction_vol, trade_count,
+    ) = struct.unpack(CANDLE_FORMAT, payload)
+    return {
+        "msg_id": msg_id,
+        "timestamp_ns": timestamp_ns,
+        "stock": stock.decode("ascii").strip(),
+        "interval_ms": interval_ms,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "dollar_volume": dollar_volume,
+        "vwap": vwap,
+        "total_vol": total_vol,
+        "bid_vol": bid_vol,
+        "offer_vol": offer_vol,
+        "auction_vol": auction_vol,
+        "trade_count": trade_count,
     }

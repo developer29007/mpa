@@ -1,21 +1,25 @@
 import datetime
 from dataclasses import dataclass
 
-# Execution
-TRADE_TYPE_EXECUTION = "E"
-# Execution with Price
-TRADE_TYPE_EXECUTION_WITH_PRICE = "P"
-# Non Displayable Trade
-TRADE_TYPE_NON_CROSS = "N"
-# Open Cross
+TRADE_TYPE_ORDER_BOOK = "E"
+TRADE_TYPE_ORDER_BOOK_PRICE = "P"
+TRADE_TYPE_NOT_ON_ORDER_BOOK = "N"
 TRADE_TYPE_OPEN_CROSS = "O"
-# Close Cross
 TRADE_TYPE_CLOSE_CROSS = "C"
-# IPO or Halt/Paused
-TRADE_TYPE_IPO_OR_HALT = "P"
-# UNKNOWN
+TRADE_TYPE_IPO_OR_HALT = "H"
 TRADE_TYPE_UNKNOWN = "U"
 
+_SIDE_LABELS = {"B": "BUY", "S": "SELL"}
+
+_TYPE_LABELS = {
+    TRADE_TYPE_ORDER_BOOK:        "'Order Book Execution'",
+    TRADE_TYPE_ORDER_BOOK_PRICE:  "'Order Book Execution (Price Changed)'",
+    TRADE_TYPE_NOT_ON_ORDER_BOOK: "'Not Displayed on Order Book'",
+    TRADE_TYPE_OPEN_CROSS:        "'Opening Cross'",
+    TRADE_TYPE_CLOSE_CROSS:       "'Closing Cross'",
+    TRADE_TYPE_IPO_OR_HALT:       "'IPO / Halt Resume Cross'",
+    TRADE_TYPE_UNKNOWN:           "'Unknown Trade Type'",
+}
 
 
 @dataclass
@@ -32,3 +36,11 @@ class Trade:
     exch_id: str = ""
     src: str = ""
     exch_match_id: str = ""
+
+    @property
+    def side_label(self) -> str:
+        return _SIDE_LABELS.get(self.side, self.side)
+
+    @property
+    def type_label(self) -> str:
+        return _TYPE_LABELS.get(self.type, self.type)

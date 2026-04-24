@@ -3,7 +3,7 @@ from typing import Optional
 from analytics.VwapTracker import VwapTracker
 from book.trade import Trade
 from book.trade_listener import TradeListener
-from util.TimeUtil import nanos_to_ms_str
+from util.TimeUtil import nanos_to_us_str
 
 
 class VwapPrinter(TradeListener):
@@ -25,7 +25,7 @@ class VwapPrinter(TradeListener):
             return
         calc = self._get_or_create_calculator(trade.sec_id)
         calc.add_trade(trade)
-        time_str = nanos_to_ms_str(trade.timestamp_ns)
+        time_str = nanos_to_us_str(trade.timestamp_ns)
         for interval, bucket in calc.buckets.items():
             vwap = bucket.vwap_price()
             if vwap is not None:

@@ -4,14 +4,16 @@ from pathlib import Path
 
 from itch.itch_feed_handler import ItchFeedHandler
 from util.TimerService import TimerService
-from util.TimeUtil import nanos_to_ms_str
+from util.TimeUtil import nanos_to_us_str
 
 
 def main():
     parser = argparse.ArgumentParser(description='ITCH 5.0 feed handler')
     parser.add_argument('--date', required=True, help='Business date MMDDYYYY')
     parser.add_argument('--file', default=None, help='ITCH file path (default: ./data/{date}.NASDAQ_ITCH50)')
-    parser.add_argument('--kafka', default=None, help='Kafka bootstrap servers (enables trade + vwap publishers)')
+    parser.add_argument('--kafka', default=None, help='Kafka bootstrap servers (enables publishers; see --publish)')
+    parser.add_argument('--db', default=None, metavar='DSN',
+                        help='Postgres DSN for direct DB sink (mutually exclusive with --kafka)')
     parser.add_argument('--print-trades', nargs='+', default=None, metavar='STOCK', help='Stocks to print trades for')
     parser.add_argument('--print-vwap', nargs='+', default=None, metavar='STOCK', help='Stocks to print VWAP for')
     parser.add_argument('--chart', nargs='*', default=None, metavar='STOCK',
@@ -29,13 +31,24 @@ def main():
     parser.add_argument('--stocks', nargs='+', default=None, metavar='STOCK',
                         help='Only process these stocks (default: all stocks)')
     parser.add_argument('--max-msgs', type=int, default=0, help='Max messages to process (0 = all)')
+    parser.add_argument('--max-market-time', default=None, metavar='HH:MM:SS',
+                        help='Stop processing when ITCH market time reaches this wall-clock time (e.g. 09:31:00)')
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
                         metavar='MS', help='VWAP bucket intervals in ms')
     parser.add_argument('--candle-intervals', nargs='+', type=int,
                         default=[60_000, 300_000],
                         metavar='MS', help='Candle bucket intervals in ms (default: 1-min and 5-min)')
+    parser.add_argument('--publish', nargs='+',
+                        choices=['trades', 'tob', 'vwap', 'noii', 'market_events', 'candles', 'all'],
+                        default=['all'],
+                        metavar='PUBLISHER',
+                        help='Publishers to enable (default: all). '
+                             'Choices: trades tob vwap noii market_events candles all')
     args = parser.parse_args()
+
+    if args.kafka and args.db:
+        parser.error("--kafka and --db are mutually exclusive")
 
     date_obj = datetime.strptime(args.date, '%m%d%Y').date()
     itch_file = args.file or f'./data/{args.date}.NASDAQ_ITCH50'
@@ -46,18 +59,26 @@ def main():
 
     trade_publisher = None
     tob_publisher = None
+    noii_publisher = None
+    market_event_publisher = None
     vwap_publishers = []
     candle_publishers = []
 
     if args.kafka:
         from confluent_kafka.admin import AdminClient, KafkaException
+        from publishers.market_event_publisher import MarketEventPublisher
         from publishers.trade_publisher import TradePublisher
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
+        from publishers.noii_publisher import NoiiPublisher
+        from publishers.candle_publisher import CandlePublisher
 
-        topics = ['trades', 'tob', 'vwap', 'candles']
+        all_publishers = {'trades', 'tob', 'vwap', 'noii', 'market_events', 'candles'}
+        publish_set = all_publishers if 'all' in args.publish else set(args.publish)
+        print(f"[kafka] Publishing: {sorted(publish_set)}")
+
         admin = AdminClient({'bootstrap.servers': args.kafka})
-        fs = admin.delete_topics(topics, operation_timeout=30)
+        fs = admin.delete_topics(list(all_publishers), operation_timeout=30)
         for topic, f in fs.items():
             try:
                 f.result()
@@ -65,22 +86,60 @@ def main():
             except KafkaException as e:
                 print(f"[kafka] Could not delete topic {topic}: {e}")
 
-        trade_publisher = TradePublisher(bootstrap_servers=args.kafka, topic='trades')
-        feed_handler.register_trade_listener(trade_publisher)
+        if 'trades' in publish_set:
+            trade_publisher = TradePublisher(bootstrap_servers=args.kafka, topic='trades')
+            feed_handler.register_trade_listener(trade_publisher)
 
-        tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
-        feed_handler.register_tob_listener(tob_publisher)
+        if 'tob' in publish_set:
+            tob_publisher = TobPublisher(bootstrap_servers=args.kafka, topic='tob')
+            feed_handler.register_tob_listener(tob_publisher)
 
-        for interval_ms in args.bucket_intervals:
-            vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
-            feed_handler.register_trade_listener(vwap_pub)
-            vwap_publishers.append(vwap_pub)
+        if 'noii' in publish_set:
+            noii_publisher = NoiiPublisher(bootstrap_servers=args.kafka, topic='noii')
+            feed_handler.register_noii_listener(noii_publisher)
 
-        from publishers.candle_publisher import CandlePublisher
-        for interval_ms in args.candle_intervals:
-            candle_pub = CandlePublisher(bootstrap_servers=args.kafka, topic='candles', interval_ms=interval_ms)
-            feed_handler.register_trade_listener(candle_pub)
-            candle_publishers.append(candle_pub)
+        if 'market_events' in publish_set:
+            market_event_publisher = MarketEventPublisher(bootstrap_servers=args.kafka, topic='market_events')
+            feed_handler.register_market_event_listener(market_event_publisher)
+
+        if 'vwap' in publish_set:
+            for interval_ms in args.bucket_intervals:
+                vwap_pub = VwapPublisher(bootstrap_servers=args.kafka, topic='vwap', interval_ms=interval_ms)
+                feed_handler.register_trade_listener(vwap_pub)
+                vwap_publishers.append(vwap_pub)
+
+        if 'candles' in publish_set:
+            for interval_ms in args.candle_intervals:
+                candle_pub = CandlePublisher(bootstrap_servers=args.kafka, topic='candles', interval_ms=interval_ms)
+                feed_handler.register_trade_listener(candle_pub)
+                candle_publishers.append(candle_pub)
+
+    db_listener = None
+    if args.db:
+        from consumers.db_insert_listener import DbInsertListener
+        from db.connection import connect, ensure_partitions
+        from db.inserter import DbInserter
+
+        all_data_types = {'trades', 'tob', 'vwap', 'noii', 'market_events', 'candles'}
+        publish_set = all_data_types if 'all' in args.publish else set(args.publish)
+        print(f"[db] Writing: {sorted(publish_set)}")
+
+        db_conn = connect(args.db)
+        ensure_partitions(db_conn, date_obj)
+        db_inserter = DbInserter(db_conn, date_obj)
+        vwap_intervals = args.bucket_intervals if 'vwap' in publish_set else []
+        candle_intervals = args.candle_intervals if 'candles' in publish_set else []
+        db_listener = DbInsertListener(db_inserter, vwap_interval_ms_list=vwap_intervals,
+                                       candle_interval_ms_list=candle_intervals)
+
+        if 'trades' in publish_set or 'vwap' in publish_set or 'candles' in publish_set:
+            feed_handler.register_trade_listener(db_listener)
+        if 'tob' in publish_set:
+            feed_handler.register_tob_listener(db_listener)
+        if 'noii' in publish_set:
+            feed_handler.register_noii_listener(db_listener)
+        if 'market_events' in publish_set:
+            feed_handler.register_market_event_listener(db_listener)
 
     if args.print_trades:
         from itch.trade_printer import TradePrinter
@@ -104,6 +163,12 @@ def main():
             stocks=stock_set, host=args.candle_host, port=args.candle_port, interval_seconds=args.candle_interval,
         ))
 
+    max_market_time_ns = None
+    if args.max_market_time:
+        h, m, s = map(int, args.max_market_time.split(':'))
+        max_market_time_ns = (h * 3600 + m * 60 + s) * 1_000_000_000
+        print(f"Stopping at market time {args.max_market_time} ({max_market_time_ns:,} ns)")
+
     timer_service = TimerService.instance()
     batch = 1000
     msg_processed = 0
@@ -118,13 +183,17 @@ def main():
                 msg_processed += batch
 
                 if msg_processed % report_interval == 0:
-                    time_str = nanos_to_ms_str(feed_handler.timestamp) if feed_handler.timestamp else '--'
+                    time_str = nanos_to_us_str(feed_handler.timestamp) if feed_handler.timestamp else '--'
                     print(f"  {msg_processed:>12,} messages  books={len(feed_handler.book_map):,}  market_time={time_str}")
 
                 timer_service.check_timers(feed_handler.timestamp)
 
                 if args.max_msgs and msg_processed >= args.max_msgs:
                     print(f"Reached max messages: {args.max_msgs}")
+                    break
+
+                if max_market_time_ns and feed_handler.timestamp and feed_handler.timestamp >= max_market_time_ns:
+                    print(f"Reached market time limit {args.max_market_time} at {nanos_to_us_str(feed_handler.timestamp)}")
                     break
     except KeyboardInterrupt:
         print("\nInterrupted.")
@@ -133,10 +202,21 @@ def main():
         trade_publisher.flush()
     if tob_publisher:
         tob_publisher.flush()
+    if noii_publisher:
+        noii_publisher.flush()
+    if market_event_publisher:
+        market_event_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
     for candle_pub in candle_publishers:
         candle_pub.flush()
+
+    if db_listener:
+        trades, vwaps, tobs, noii, market_events, candles = db_listener.flush()
+        db_conn.commit()
+        db_conn.close()
+        print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii, "
+              f"{market_events} market_events, {candles} candles")
 
 
 if __name__ == '__main__':
