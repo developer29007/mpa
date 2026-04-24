@@ -10,5 +10,9 @@
       "Bash(git add *)",
       "Bash(git commit*)"
     ]
+  },
+  "enabledPlugins": {
+    "code-review@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true
   }
 }
