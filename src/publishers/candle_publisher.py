@@ -94,7 +94,8 @@ class CandlePublisher(TradeListener, TimerListener, KafkaPublisher):
                 self._publish(CANDLE_MSG_TYPE, _serialize_candle(stock, bucket))
                 self._buckets[stock] = CandleBucket(self._interval_ms, boundary_ns)
 
-        TimerService.instance().add_timer(self._interval_ns, boundary_ns, self)
+        next_boundary_ns = self._calc_bucket_start_ns(time_now) + self._interval_ns
+        TimerService.instance().add_timer(next_boundary_ns - time_now, time_now, self)
 
     def flush(self):
         for stock, bucket in self._buckets.items():

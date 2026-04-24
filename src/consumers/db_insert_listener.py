@@ -182,7 +182,8 @@ class _CandleTimerHelper(TimerListener):
             if bucket.bucket_start_ns < boundary_ns and not bucket.is_empty:
                 self._candle_buf.append(_bucket_to_candle_dict(stock, bucket))
                 self._buckets[stock] = CandleBucket(self._interval_ms, boundary_ns)
-        TimerService.instance().add_timer(self._interval_ns, boundary_ns, self)
+        next_boundary_ns = self._calc_bucket_start_ns(time_now) + self._interval_ns
+        TimerService.instance().add_timer(next_boundary_ns - time_now, time_now, self)
 
     def flush_remaining(self) -> None:
         """Drain any still-open buckets into the buffer. Call only at end of run."""
