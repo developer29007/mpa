@@ -90,6 +90,31 @@ CREATE TABLE IF NOT EXISTS market_events (
 CREATE INDEX IF NOT EXISTS idx_market_events_stock_date
     ON market_events (stock, trade_date, timestamp_ns);
 
+-- OHLCV candles with VWAP and bid/offer/auction volume breakdown.
+-- timestamp_ns is the bucket START time (epoch-aligned to interval_ms).
+-- dollar_volume = sum(price * shares) within the bucket; enables cross-bucket aggregation.
+CREATE TABLE IF NOT EXISTS candles (
+    trade_date      DATE             NOT NULL,
+    msg_id          BIGINT           NOT NULL,
+    timestamp_ns    BIGINT           NOT NULL,
+    stock           VARCHAR(8)       NOT NULL,
+    interval_ms     INTEGER          NOT NULL,
+    open            DOUBLE PRECISION NOT NULL,
+    high            DOUBLE PRECISION NOT NULL,
+    low             DOUBLE PRECISION NOT NULL,
+    close           DOUBLE PRECISION NOT NULL,
+    dollar_volume   DOUBLE PRECISION NOT NULL,
+    vwap            DOUBLE PRECISION,
+    total_vol       INTEGER          NOT NULL,
+    bid_vol         INTEGER          NOT NULL,
+    offer_vol       INTEGER          NOT NULL,
+    auction_vol     INTEGER          NOT NULL,
+    trade_count     INTEGER          NOT NULL,
+    UNIQUE (msg_id, trade_date)
+) PARTITION BY RANGE (trade_date);
+
+CREATE INDEX IF NOT EXISTS idx_candles_stock_interval ON candles (stock, interval_ms, timestamp_ns);
+
 -- Helper: convert 'HH:MM:SS' or 'HH:MM:SS.mmm' to nanoseconds since midnight.
 -- Usage: time_to_ns('10:32:00') → 37920000000000
 CREATE OR REPLACE FUNCTION time_to_ns(t TEXT) RETURNS BIGINT AS $$

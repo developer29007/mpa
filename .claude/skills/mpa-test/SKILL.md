@@ -325,10 +325,48 @@ ORDER BY timestamp_ns LIMIT 5;
 
 ---
 
+### `candles`
+**Description:** Epoch-aligned OHLCV candles with VWAP and bid/offer/auction volume breakdown. Buckets are fixed-boundary (e.g. 09:30:00–09:31:00) at configurable intervals — default 1-min (60 000 ms) and 5-min (300 000 ms). `timestamp_ns` is the bucket START time. `dollar_volume` = Σ(price × shares) enabling cross-bucket aggregation. Use `--max-market-time 09:35:00` for a quick test covering the first few buckets.
+**Publish flag:** `--publish candles`
+**Default stop time:** `--max-market-time 09:35:00` — captures at least 5 complete 1-min buckets.
+**Tables to clean:** `candles`
+**Verification queries:**
+
+```sql
+-- Must be > 0
+SELECT count(*) AS cnt FROM candles WHERE trade_date = '1970-01-01';
+
+-- Both intervals (60000 and 300000 ms) should be present
+SELECT interval_ms, count(*) AS cnt
+FROM candles WHERE trade_date = '1970-01-01'
+GROUP BY interval_ms ORDER BY interval_ms;
+
+-- OHLC sanity: low <= open, close <= high for every candle
+SELECT count(*) AS bad FROM candles
+WHERE trade_date = '1970-01-01'
+  AND (low > open OR low > close OR high < open OR high < close);
+
+-- VWAP sanity: must be within [low, high]
+SELECT count(*) AS bad FROM candles
+WHERE trade_date = '1970-01-01'
+  AND vwap IS NOT NULL
+  AND (vwap < low OR vwap > high);
+
+-- Dollar volume cross-check: 5 consecutive 1-min buckets should equal one 5-min bucket
+-- (run manually if needed; just verify vwap is reasonable)
+SELECT ns_to_time(timestamp_ns) AS bucket_start, stock, interval_ms,
+       open, high, low, close, vwap, total_vol, trade_count
+FROM candles
+WHERE trade_date = '1970-01-01'
+ORDER BY interval_ms, stock, timestamp_ns LIMIT 20;
+```
+
+---
+
 ### `all`
-**Description:** Full pipeline — all five features simultaneously.
+**Description:** Full pipeline — all six features simultaneously.
 **Publish flag:** `--publish all`
-**Tables to clean:** `trades`, `tob`, `vwap`, `noii`, `market_events`
+**Tables to clean:** `trades`, `tob`, `vwap`, `noii`, `market_events`, `candles`
 **Verification queries:** Run all queries from each feature above.
 
 ---

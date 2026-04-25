@@ -1,5 +1,6 @@
 import struct
 
+from publishers.candle_publisher import CANDLE_FORMAT
 from publishers.market_event_publisher import MARKET_EVENT_FORMAT
 from publishers.trade_publisher import TRADE_FORMAT
 from publishers.vwap_publisher import VWAP_FORMAT
@@ -102,4 +103,30 @@ def deserialize_noii(payload: bytes) -> dict:
         "imbalance_direction": imbalance_direction.decode("ascii"),
         "cross_type": cross_type.decode("ascii"),
         "price_variation_indicator": price_variation_indicator.decode("ascii"),
+    }
+
+
+def deserialize_candle(payload: bytes) -> dict:
+    """Deserialize binary candle payload."""
+    (
+        msg_id, timestamp_ns, stock, interval_ms,
+        open_, high, low, close, dollar_volume, vwap,
+        total_vol, bid_vol, offer_vol, auction_vol, trade_count,
+    ) = struct.unpack(CANDLE_FORMAT, payload)
+    return {
+        "msg_id": msg_id,
+        "timestamp_ns": timestamp_ns,
+        "stock": stock.decode("ascii").strip(),
+        "interval_ms": interval_ms,
+        "open": open_,
+        "high": high,
+        "low": low,
+        "close": close,
+        "dollar_volume": dollar_volume,
+        "vwap": vwap,
+        "total_vol": total_vol,
+        "bid_vol": bid_vol,
+        "offer_vol": offer_vol,
+        "auction_vol": auction_vol,
+        "trade_count": trade_count,
     }

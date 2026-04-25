@@ -36,12 +36,15 @@ def main():
     parser.add_argument('--bucket-intervals', nargs='+', type=int,
                         default=[250, 1000, 2000, 5000, 10000, 20000],
                         metavar='MS', help='VWAP bucket intervals in ms')
+    parser.add_argument('--candle-intervals', nargs='+', type=int,
+                        default=[60_000, 300_000],
+                        metavar='MS', help='Candle bucket intervals in ms (default: 1-min and 5-min)')
     parser.add_argument('--publish', nargs='+',
-                        choices=['trades', 'tob', 'vwap', 'noii', 'market_events', 'all'],
+                        choices=['trades', 'tob', 'vwap', 'noii', 'market_events', 'candles', 'all'],
                         default=['all'],
                         metavar='PUBLISHER',
                         help='Publishers to enable (default: all). '
-                             'Choices: trades tob vwap noii market_events all')
+                             'Choices: trades tob vwap noii market_events candles all')
     args = parser.parse_args()
 
     if args.kafka and args.db:
@@ -59,6 +62,7 @@ def main():
     noii_publisher = None
     market_event_publisher = None
     vwap_publishers = []
+    candle_publishers = []
 
     if args.kafka:
         from confluent_kafka.admin import AdminClient, KafkaException
@@ -67,8 +71,9 @@ def main():
         from publishers.tob_publisher import TobPublisher
         from publishers.vwap_publisher import VwapPublisher
         from publishers.noii_publisher import NoiiPublisher
+        from publishers.candle_publisher import CandlePublisher
 
-        all_publishers = {'trades', 'tob', 'vwap', 'noii', 'market_events'}
+        all_publishers = {'trades', 'tob', 'vwap', 'noii', 'market_events', 'candles'}
         publish_set = all_publishers if 'all' in args.publish else set(args.publish)
         print(f"[kafka] Publishing: {sorted(publish_set)}")
 
@@ -103,13 +108,19 @@ def main():
                 feed_handler.register_trade_listener(vwap_pub)
                 vwap_publishers.append(vwap_pub)
 
+        if 'candles' in publish_set:
+            for interval_ms in args.candle_intervals:
+                candle_pub = CandlePublisher(bootstrap_servers=args.kafka, topic='candles', interval_ms=interval_ms)
+                feed_handler.register_trade_listener(candle_pub)
+                candle_publishers.append(candle_pub)
+
     db_listener = None
     if args.db:
         from consumers.db_insert_listener import DbInsertListener
         from db.connection import connect, ensure_partitions
         from db.inserter import DbInserter
 
-        all_data_types = {'trades', 'tob', 'vwap', 'noii', 'market_events'}
+        all_data_types = {'trades', 'tob', 'vwap', 'noii', 'market_events', 'candles'}
         publish_set = all_data_types if 'all' in args.publish else set(args.publish)
         print(f"[db] Writing: {sorted(publish_set)}")
 
@@ -117,9 +128,11 @@ def main():
         ensure_partitions(db_conn, date_obj)
         db_inserter = DbInserter(db_conn, date_obj)
         vwap_intervals = args.bucket_intervals if 'vwap' in publish_set else []
-        db_listener = DbInsertListener(db_inserter, interval_ms_list=vwap_intervals)
+        candle_intervals = args.candle_intervals if 'candles' in publish_set else []
+        db_listener = DbInsertListener(db_inserter, vwap_interval_ms_list=vwap_intervals,
+                                       candle_interval_ms_list=candle_intervals)
 
-        if 'trades' in publish_set or 'vwap' in publish_set:
+        if 'trades' in publish_set or 'vwap' in publish_set or 'candles' in publish_set:
             feed_handler.register_trade_listener(db_listener)
         if 'tob' in publish_set:
             feed_handler.register_tob_listener(db_listener)
@@ -180,7 +193,7 @@ def main():
                     break
 
                 if max_market_time_ns and feed_handler.timestamp and feed_handler.timestamp >= max_market_time_ns:
-                    print(f"Reached market time limit {args.max_market_time} at {nanos_to_ms_str(feed_handler.timestamp)}")
+                    print(f"Reached market time limit {args.max_market_time} at {nanos_to_us_str(feed_handler.timestamp)}")
                     break
     except KeyboardInterrupt:
         print("\nInterrupted.")
@@ -195,12 +208,14 @@ def main():
         market_event_publisher.flush()
     for vwap_pub in vwap_publishers:
         vwap_pub.flush()
+    for candle_pub in candle_publishers:
+        candle_pub.flush()
 
     if db_listener:
-        trades, vwaps, tobs, noii, market_events = db_listener.flush()
-        db_conn.commit()
+        trades, vwaps, tobs, noii, market_events, candles = db_listener.flush(final=True)
         db_conn.close()
-        print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii, {market_events} market_events")
+        print(f"[db] Done: {trades} trades, {vwaps} vwap, {tobs} tob, {noii} noii, "
+              f"{market_events} market_events, {candles} candles")
 
 
 if __name__ == '__main__':

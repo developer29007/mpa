@@ -1,5 +1,6 @@
 import math
 
+from analytics.CandleBucket import CandleBucket
 from analytics.VwapBucket import VwapBucket
 from book.market_event import MarketEvent
 from book.market_event_listener import MarketEventListener
@@ -89,6 +90,27 @@ def _bucket_to_vwap_dict(timestamp_ns: int, stock: str, bucket: VwapBucket) -> d
     }
 
 
+def _bucket_to_candle_dict(stock: str, bucket: CandleBucket) -> dict:
+    vwap = bucket.vwap()
+    return {
+        "msg_id": next_id(),
+        "timestamp_ns": bucket.bucket_start_ns,
+        "stock": stock,
+        "interval_ms": bucket.interval_ms,
+        "open": bucket.open,
+        "high": bucket.high,
+        "low": bucket.low,
+        "close": bucket.close,
+        "dollar_volume": bucket.dollar_volume,
+        "vwap": vwap if vwap is not None else math.nan,
+        "total_vol": bucket.total_vol,
+        "bid_vol": bucket.bid_vol,
+        "offer_vol": bucket.offer_vol,
+        "auction_vol": bucket.auction_vol,
+        "trade_count": bucket.trade_count,
+    }
+
+
 class _VwapTimerHelper(TimerListener):
     """Computes VWAP for one interval, appending results to a shared buffer on each timer tick."""
 
@@ -116,17 +138,75 @@ class _VwapTimerHelper(TimerListener):
         TimerService.instance().add_timer(time_interval, publish_time, self)
 
 
+class _CandleTimerHelper(TimerListener):
+    """Computes epoch-aligned OHLCV candles for one interval, appending to a shared buffer.
+
+    Uses the same boundary-crossing + timer dual-path as CandlePublisher: on_trade publishes
+    completed buckets as new trades arrive, while the timer catches buckets for stocks that
+    have no further trades after a boundary closes.
+    """
+
+    def __init__(self, interval_ms: int, candle_buf: list):
+        self._interval_ms = interval_ms
+        self._interval_ns = ms_to_nanos(interval_ms)
+        self._buckets: dict[str, CandleBucket] = {}
+        self._candle_buf = candle_buf
+        self._timer_registered = False
+
+    def _calc_bucket_start_ns(self, timestamp_ns: int) -> int:
+        return (timestamp_ns // self._interval_ns) * self._interval_ns
+
+    def add_trade(self, trade: Trade) -> None:
+        stock = trade.sec_id
+        bucket_start_ns = self._calc_bucket_start_ns(trade.timestamp_ns)
+
+        prev_bucket = self._buckets.get(stock)
+        if prev_bucket is not None and prev_bucket.bucket_start_ns != bucket_start_ns:
+            if not prev_bucket.is_empty:
+                self._candle_buf.append(_bucket_to_candle_dict(stock, prev_bucket))
+            self._buckets[stock] = CandleBucket(self._interval_ms, bucket_start_ns)
+        elif stock not in self._buckets:
+            self._buckets[stock] = CandleBucket(self._interval_ms, bucket_start_ns)
+
+        self._buckets[stock].add_trade(trade)
+
+        if not self._timer_registered:
+            first_boundary_ns = bucket_start_ns + self._interval_ns
+            delay_ns = first_boundary_ns - trade.timestamp_ns
+            TimerService.instance().add_timer(delay_ns, trade.timestamp_ns, self)
+            self._timer_registered = True
+
+    def on_timer_expired(self, time_interval: int, scheduled_time: int, time_now: int) -> None:
+        boundary_ns = scheduled_time + time_interval
+        for stock, bucket in self._buckets.items():
+            if bucket.bucket_start_ns < boundary_ns and not bucket.is_empty:
+                self._candle_buf.append(_bucket_to_candle_dict(stock, bucket))
+                self._buckets[stock] = CandleBucket(self._interval_ms, boundary_ns)
+        next_boundary_ns = self._calc_bucket_start_ns(time_now) + self._interval_ns
+        TimerService.instance().add_timer(next_boundary_ns - time_now, time_now, self)
+
+    def flush_remaining(self) -> None:
+        """Drain any still-open buckets into the buffer. Call only at end of run."""
+        for stock, bucket in self._buckets.items():
+            if not bucket.is_empty:
+                self._candle_buf.append(_bucket_to_candle_dict(stock, bucket))
+                self._buckets[stock] = CandleBucket(self._interval_ms, bucket.bucket_start_ns)
+
+
 class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventListener):
     """Buffers market events and flushes them to the database via DbInserter.
 
     Two usage modes:
     - Direct (itch_runner --db): register with ItchFeedHandler; receives domain objects
-      via on_trade / on_tob_change / on_noii. VWAP is computed internally via timers.
+      via on_trade / on_tob_change / on_noii. VWAP and candles are computed internally
+      via timers.
     - Kafka (db_consumer): call buffer_*_dict() with pre-deserialized dicts; original
       msg_ids from Kafka are preserved for idempotent inserts.
     """
 
-    def __init__(self, inserter: DbInserter, interval_ms_list: list[int] | None = None,
+    def __init__(self, inserter: DbInserter,
+                 vwap_interval_ms_list: list[int] | None = None,
+                 candle_interval_ms_list: list[int] | None = None,
                  batch_size: int = 1000):
         self._inserter = inserter
         self._batch_size = batch_size
@@ -135,13 +215,18 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventList
         self._tob_buf: list[dict] = []
         self._noii_buf: list[dict] = []
         self._market_event_buf: list[dict] = []
-        self._vwap_timers = [_VwapTimerHelper(ms, self._vwap_buf) for ms in (interval_ms_list or [])]
+        self._candle_buf: list[dict] = []
+        self._vwap_timers = [_VwapTimerHelper(ms, self._vwap_buf) for ms in (vwap_interval_ms_list or [])]
+        self._candle_timers = [_CandleTimerHelper(ms, self._candle_buf)
+                               for ms in (candle_interval_ms_list or [])]
 
     # --- Domain object interface (direct/itch_runner mode) ---
 
     def on_trade(self, trade: Trade) -> None:
         self._trade_buf.append(_trade_to_dict(trade))
         for timer in self._vwap_timers:
+            timer.add_trade(trade)
+        for timer in self._candle_timers:
             timer.add_trade(trade)
         self._maybe_flush()
 
@@ -176,10 +261,13 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventList
     def buffer_market_event_dict(self, d: dict) -> None:
         self._market_event_buf.append(d)
 
+    def buffer_candle_dict(self, d: dict) -> None:
+        self._candle_buf.append(d)
+
     @property
     def pending_count(self) -> int:
         return (len(self._trade_buf) + len(self._vwap_buf) + len(self._tob_buf)
-                + len(self._noii_buf) + len(self._market_event_buf))
+                + len(self._noii_buf) + len(self._market_event_buf) + len(self._candle_buf))
 
     # --- Flush ---
 
@@ -187,17 +275,25 @@ class DbInsertListener(TradeListener, TobListener, NoiiListener, MarketEventList
         if self.pending_count >= self._batch_size:
             self.flush()
 
-    def flush(self) -> tuple[int, int, int, int, int]:
-        """Flush all buffered records to the DB. Returns (trades, vwaps, tobs, noii, market_events) counts."""
+    def flush(self, final: bool = False) -> tuple[int, int, int, int, int, int]:
+        """Flush all buffered records to the DB.
+
+        Returns (trades, vwaps, tobs, noii, market_events, candles) counts.
+        Pass final=True at end of run to also drain still-open candle buckets.
+        """
+        if final:
+            for timer in self._candle_timers:
+                timer.flush_remaining()
         counts = (len(self._trade_buf), len(self._vwap_buf), len(self._tob_buf),
-                  len(self._noii_buf), len(self._market_event_buf))
+                  len(self._noii_buf), len(self._market_event_buf), len(self._candle_buf))
         if not any(counts):
             return counts
         self._inserter.flush(self._trade_buf, self._vwap_buf, self._tob_buf,
-                             self._noii_buf, self._market_event_buf)
+                             self._noii_buf, self._market_event_buf, self._candle_buf)
         self._trade_buf.clear()
         self._vwap_buf.clear()
         self._tob_buf.clear()
         self._noii_buf.clear()
         self._market_event_buf.clear()
+        self._candle_buf.clear()
         return counts
