@@ -346,11 +346,11 @@ SELECT count(*) AS bad FROM candles
 WHERE trade_date = '1970-01-01'
   AND (low > open OR low > close OR high < open OR high < close);
 
--- VWAP sanity: must be within [low, high]
+-- VWAP sanity: must be within [low, high] (1e-9 tolerance for float64 rounding)
 SELECT count(*) AS bad FROM candles
 WHERE trade_date = '1970-01-01'
   AND vwap IS NOT NULL
-  AND (vwap < low OR vwap > high);
+  AND (vwap < low - 1e-9 OR vwap > high + 1e-9);
 
 -- Dollar volume cross-check: 5 consecutive 1-min buckets should equal one 5-min bucket
 -- (run manually if needed; just verify vwap is reasonable)
