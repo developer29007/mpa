@@ -167,6 +167,10 @@ class ItchFeedHandler(ItchListener):
     def handle_cross_trade(self, shares: int, stock: str, cross_price: int,
                            match_number: int, cross_type: str, timestamp_ns: int):
         self.timestamp = max(self.timestamp, timestamp_ns)
+        # NASDAQ sends Q messages with shares=0 / cross_price=0 when a cross window closes
+        # with no matched executions. These are markers, not real trades — skip them.
+        if shares == 0 or cross_price == 0:
+            return
         order_book = self._get_or_create_book(stock)
         if order_book:
             order_book.record_cross_trade(shares, cross_price, match_number, get_trade_type(cross_type), timestamp_ns)
