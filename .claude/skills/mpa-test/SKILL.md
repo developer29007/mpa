@@ -325,24 +325,24 @@ ORDER BY timestamp_ns LIMIT 5;
 
 ---
 
-### `candles`
-**Description:** Epoch-aligned OHLCV candles with VWAP and bid/offer/auction volume breakdown. Buckets are fixed-boundary (e.g. 09:30:00–09:31:00) at configurable intervals — default 1-min (60 000 ms) and 5-min (300 000 ms). `timestamp_ns` is the bucket START time. `dollar_volume` = Σ(price × shares) enabling cross-bucket aggregation. Use `--max-market-time 09:35:00` for a quick test covering the first few buckets.
-**Publish flag:** `--publish candles`
+### `tradebucket`
+**Description:** Epoch-aligned trade buckets with OHLC, VWAP, and full side/type breakdown. Each bucket tracks notional (Σ price×shares), buy/sell/auction/hidden shares and notional. Auction = O/C/H cross; hidden = non-displayable type N. Intervals default to 1-min (60 000 ms) and 5-min (300 000 ms). Use `--max-market-time 09:35:00` for a quick test.
+**Publish flag:** `--publish tradebucket`
 **Default stop time:** `--max-market-time 09:35:00` — captures at least 5 complete 1-min buckets.
-**Tables to clean:** `candles`
+**Tables to clean:** `trade_buckets`
 **Verification queries:**
 
 ```sql
 -- Must be > 0
-SELECT count(*) AS cnt FROM candles WHERE trade_date = '1970-01-01';
+SELECT count(*) AS cnt FROM trade_buckets WHERE trade_date = '1970-01-01';
 
 -- Both intervals (60000 and 300000 ms) should be present
 SELECT interval_ms, count(*) AS cnt
-FROM candles WHERE trade_date = '1970-01-01'
+FROM trade_buckets WHERE trade_date = '1970-01-01'
 GROUP BY interval_ms ORDER BY interval_ms;
 
--- OHLC sanity: low <= open, close <= high for every candle
-SELECT count(*) AS bad FROM candles
+-- OHLC sanity: low <= open, close <= high
+SELECT count(*) AS bad FROM trade_buckets
 WHERE trade_date = '1970-01-01'
   AND (low > open OR low > close OR high < open OR high < close);
 
