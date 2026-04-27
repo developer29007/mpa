@@ -41,12 +41,13 @@ PYTHONPATH=src python -m itch.itch_runner --date MMDDYYYY [OPTIONS]
 |---|---|---|
 | `--date MMDDYYYY` | required | Business date. Sets `trade_date` on all messages. Also controls which Kafka topics are deleted at startup. |
 | `--file PATH` | `./data/{date}.NASDAQ_ITCH50` | Override the ITCH binary file path. |
-| `--kafka HOST:PORT` | None | Enable Kafka publishing. When set, ALL four topics are published: `trades`, `tob`, `vwap`, `noii`. Without this flag, nothing is published. |
+| `--kafka HOST:PORT` | None | Enable Kafka publishing. When set, all topics are published unless filtered by `--publish`. Without this flag, nothing is published. |
 | `--stocks A B …` | All stocks | Filter: only process these symbols. Greatly speeds up tests. |
 | `--max-msgs N` | 0 (all) | Stop after N total ITCH messages. Use for quick smoke tests. **Do not use for NOII testing** — message counts vary; use `--max-market-time` instead. |
 | `--max-market-time HH:MM:SS` | None | Stop when ITCH timestamp reaches this wall-clock time. Preferred over `--max-msgs` for time-bounded tests. Example: `09:31:00` captures the full opening cross without scanning the whole day. |
-| `--publish A B …` | `all` | Kafka publishers to enable: `trades` `tob` `vwap` `noii` `all`. Only the selected topics are deleted at startup. Useful for targeted tests (e.g. `--publish noii` to only write NOII data). |
+| `--publish A B …` | `all` | Publishers to enable: `trades` `tob` `vwap` `noii` `market_events` `tradebucket` `all`. Only the selected topics are deleted at startup. Useful for targeted tests (e.g. `--publish tradebucket`). |
 | `--bucket-intervals MS …` | 250 1000 2000 5000 10000 20000 | VWAP rolling window sizes in milliseconds. |
+| `--trade-bucket-intervals MS …` | 60000 300000 | TradeBucket window sizes in milliseconds (default: 1-min and 5-min). |
 | `--print-trades STOCK …` | None | Print trade executions to stdout for the given stocks. |
 | `--print-vwap STOCK …` | None | Print VWAP updates to stdout. |
 | `--chart [STOCK …]` | None | Start a WebSocket trade chart server (port 8765). |
@@ -60,8 +61,10 @@ PYTHONPATH=src python -m itch.itch_runner --date MMDDYYYY [OPTIONS]
 | `tob` | A/F/E/C/X/D/U (all order book changes) | Every order book state change |
 | `vwap` | Same as trades | Timer-based (every `--bucket-intervals` ms) |
 | `noii` | I (Net Order Imbalance Indicator) | Opening cross (~9:25–9:30 ET), Closing cross (~3:50–4:00 ET) |
+| `market_events` | H (Stock Trading Action) | Per-stock halts, pauses, resumes |
+| `tradebucket` | Same as trades | Timer-based OHLC+VWAP+side-volume buckets (every `--trade-bucket-intervals` ms) |
 
-**When itch_runner starts with `--kafka`, it deletes all four topics first for a clean slate.**
+**When itch_runner starts with `--kafka`, it deletes all configured topics first for a clean slate.**
 
 ---
 

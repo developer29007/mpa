@@ -103,7 +103,7 @@ PYTHONPATH=src pdm run python -c "
 import os, psycopg
 from psycopg import sql
 conn = psycopg.connect(os.environ['MPA_DSN'])
-tables = ['trades', 'tob', 'vwap', 'noii']   # adjust to feature tables below
+tables = ['trades', 'tob', 'vwap', 'noii', 'market_events', 'trade_buckets']   # adjust to feature tables below
 for t in tables:
     with conn.cursor() as cur:
         cur.execute(sql.SQL('DELETE FROM {} WHERE trade_date = %s').format(sql.Identifier(t)), ('1970-01-01',))

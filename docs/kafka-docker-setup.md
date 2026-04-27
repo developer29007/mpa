@@ -89,7 +89,7 @@ Tells Kafka which listener name is reserved for controller (KRaft metadata) traf
 
 ### `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true`
 
-When a producer publishes to a topic that does not exist yet, Kafka will create it automatically. This means itch-runner can start publishing to `trades`, `tob`, and `vwap` without any manual topic creation step.
+When a producer publishes to a topic that does not exist yet, Kafka will create it automatically. This means itch-runner can start publishing to `trades`, `tob`, `vwap`, `noii`, `market_events`, and `tradebucket` without any manual topic creation step.
 
 In stricter production setups you would set this to `false` and create topics explicitly to prevent accidental topic creation from typos. For our setup auto-creation is convenient and safe.
 
