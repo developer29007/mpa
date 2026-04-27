@@ -150,6 +150,16 @@ The skill handles environment loading, pre-flight checks, cleanup, running itch_
 
 ---
 
+## Data quality checks
+
+All sanity checks, OHLC/VWAP invariants, and per-feature row-count queries are in:
+
+```
+src/db/data_quality_checks.sql
+```
+
+Replace `'1970-01-01'` with the actual `trade_date`. Each query has an inline comment stating the expected result (e.g. `-- [PASS: 0]`). The `mpa-test` skill references this file and runs subsets automatically.
+
 ## Manual verification SQL
 
 After running the pipeline, use these queries (replace `'1970-01-01'` with your test date):

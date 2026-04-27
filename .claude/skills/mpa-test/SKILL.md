@@ -330,35 +330,40 @@ ORDER BY timestamp_ns LIMIT 5;
 **Publish flag:** `--publish tradebucket`
 **Default stop time:** `--max-market-time 09:35:00` — captures at least 5 complete 1-min buckets.
 **Tables to clean:** `trade_buckets`
-**Verification queries:**
+**Verification queries:** Full checks are in `src/db/data_quality_checks.sql`. Quick version:
 
 ```sql
--- Must be > 0
+-- [PASS: > 0] Row count
 SELECT count(*) AS cnt FROM trade_buckets WHERE trade_date = '1970-01-01';
 
--- Both intervals (60000 and 300000 ms) should be present
+-- [PASS: both intervals present] Per-interval count
 SELECT interval_ms, count(*) AS cnt
 FROM trade_buckets WHERE trade_date = '1970-01-01'
 GROUP BY interval_ms ORDER BY interval_ms;
 
--- OHLC sanity: low <= open, close <= high
+-- [PASS: 0] No zero open/low — null cross filter check
+SELECT count(*) AS bad FROM trade_buckets
+WHERE trade_date = '1970-01-01' AND (open = 0 OR low = 0);
+
+-- [PASS: 0] OHLC sanity
 SELECT count(*) AS bad FROM trade_buckets
 WHERE trade_date = '1970-01-01'
   AND (low > open OR low > close OR high < open OR high < close);
 
--- VWAP sanity: must be within [low, high] (1e-9 tolerance for float64 rounding)
-SELECT count(*) AS bad FROM candles
+-- [PASS: 0] VWAP within [low, high] (1e-9 float64 tolerance)
+SELECT count(*) AS bad FROM trade_buckets
 WHERE trade_date = '1970-01-01'
-  AND vwap IS NOT NULL
-  AND (vwap < low - 1e-9 OR vwap > high + 1e-9);
+  AND vwap IS NOT NULL AND (vwap < low - 1e-9 OR vwap > high + 1e-9);
 
--- Dollar volume cross-check: 5 consecutive 1-min buckets should equal one 5-min bucket
--- (run manually if needed; just verify vwap is reasonable)
-SELECT ns_to_time(timestamp_ns) AS bucket_start, stock, interval_ms,
-       open, high, low, close, vwap, total_vol, trade_count
-FROM candles
+-- [PASS: 0] Shares invariant: total = buy + sell + auction + hidden
+SELECT count(*) AS bad FROM trade_buckets
 WHERE trade_date = '1970-01-01'
-ORDER BY interval_ms, stock, timestamp_ns LIMIT 20;
+  AND total_shares != buy_shares + sell_shares + auction_shares + hidden_shares;
+
+-- [PASS: 0] Volume invariant: notional = sum of side volumes (1e-6 tolerance)
+SELECT count(*) AS bad FROM trade_buckets
+WHERE trade_date = '1970-01-01'
+  AND abs(notional - (buy_volume + sell_volume + auction_volume + hidden_volume)) > 1e-6;
 ```
 
 ---
@@ -366,8 +371,8 @@ ORDER BY interval_ms, stock, timestamp_ns LIMIT 20;
 ### `all`
 **Description:** Full pipeline — all six features simultaneously.
 **Publish flag:** `--publish all`
-**Tables to clean:** `trades`, `tob`, `vwap`, `noii`, `market_events`, `candles`
-**Verification queries:** Run all queries from each feature above.
+**Tables to clean:** `trades`, `tob`, `vwap`, `noii`, `market_events`, `trade_buckets`
+**Verification queries:** Run all queries from each feature above, or use `src/db/data_quality_checks.sql`.
 
 ---
 
