@@ -63,15 +63,17 @@ MARKET_EVENT_INSERT = """
     ) ON CONFLICT (msg_id, trade_date) DO NOTHING
 """
 
-CANDLE_INSERT = """
-    INSERT INTO candles (
+TRADE_BUCKET_INSERT = """
+    INSERT INTO trade_buckets (
         trade_date, msg_id, timestamp_ns, stock, interval_ms,
-        open, high, low, close, dollar_volume, vwap,
-        total_vol, bid_vol, offer_vol, auction_vol, trade_count
+        open, high, low, close, notional, vwap,
+        total_shares, buy_shares, sell_shares, auction_shares, hidden_shares, trade_count,
+        buy_volume, sell_volume, auction_volume, hidden_volume
     ) VALUES (
         %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(stock)s, %(interval_ms)s,
-        %(open)s, %(high)s, %(low)s, %(close)s, %(dollar_volume)s, %(vwap)s,
-        %(total_vol)s, %(bid_vol)s, %(offer_vol)s, %(auction_vol)s, %(trade_count)s
+        %(open)s, %(high)s, %(low)s, %(close)s, %(notional)s, %(vwap)s,
+        %(total_shares)s, %(buy_shares)s, %(sell_shares)s, %(auction_shares)s, %(hidden_shares)s, %(trade_count)s,
+        %(buy_volume)s, %(sell_volume)s, %(auction_volume)s, %(hidden_volume)s
     ) ON CONFLICT (msg_id, trade_date) DO NOTHING
 """
 
@@ -128,24 +130,24 @@ class DbInserter:
         with self._conn.cursor() as cur:
             cur.executemany(MARKET_EVENT_INSERT, events)
 
-    def insert_candles(self, candles: list[dict]) -> None:
-        if not candles:
+    def insert_trade_buckets(self, trade_buckets: list[dict]) -> None:
+        if not trade_buckets:
             return
-        for c in candles:
-            c["trade_date"] = self._trade_date
-            c["vwap"] = _nan_to_none(c["vwap"])
+        for tb in trade_buckets:
+            tb["trade_date"] = self._trade_date
+            tb["vwap"] = _nan_to_none(tb["vwap"])
         with self._conn.cursor() as cur:
-            cur.executemany(CANDLE_INSERT, candles)
+            cur.executemany(TRADE_BUCKET_INSERT, trade_buckets)
 
     def flush(self, trades: list[dict], vwaps: list[dict], tobs: list[dict],
               noii_records: list[dict] | None = None,
               market_events: list[dict] | None = None,
-              candles: list[dict] | None = None) -> None:
+              trade_buckets: list[dict] | None = None) -> None:
         """Insert all buffered records in a single transaction, then commit."""
         self.insert_trades(trades)
         self.insert_vwaps(vwaps)
         self.insert_tobs(tobs)
         self.insert_noii(noii_records or [])
         self.insert_market_events(market_events or [])
-        self.insert_candles(candles or [])
+        self.insert_trade_buckets(trade_buckets or [])
         self._conn.commit()

@@ -1,6 +1,6 @@
 import struct
 
-from publishers.candle_publisher import CANDLE_FORMAT
+from publishers.trade_bucket_publisher import TRADE_BUCKET_FORMAT
 from publishers.market_event_publisher import MARKET_EVENT_FORMAT
 from publishers.trade_publisher import TRADE_FORMAT
 from publishers.vwap_publisher import VWAP_FORMAT
@@ -106,13 +106,14 @@ def deserialize_noii(payload: bytes) -> dict:
     }
 
 
-def deserialize_candle(payload: bytes) -> dict:
-    """Deserialize binary candle payload."""
+def deserialize_trade_bucket(payload: bytes) -> dict:
+    """Deserialize binary trade-bucket payload."""
     (
         msg_id, timestamp_ns, stock, interval_ms,
-        open_, high, low, close, dollar_volume, vwap,
-        total_vol, bid_vol, offer_vol, auction_vol, trade_count,
-    ) = struct.unpack(CANDLE_FORMAT, payload)
+        open_, high, low, close, notional, vwap,
+        total_shares, buy_shares, sell_shares, auction_shares, hidden_shares, trade_count,
+        buy_volume, sell_volume, auction_volume, hidden_volume,
+    ) = struct.unpack(TRADE_BUCKET_FORMAT, payload)
     return {
         "msg_id": msg_id,
         "timestamp_ns": timestamp_ns,
@@ -122,11 +123,16 @@ def deserialize_candle(payload: bytes) -> dict:
         "high": high,
         "low": low,
         "close": close,
-        "dollar_volume": dollar_volume,
+        "notional": notional,
         "vwap": vwap,
-        "total_vol": total_vol,
-        "bid_vol": bid_vol,
-        "offer_vol": offer_vol,
-        "auction_vol": auction_vol,
+        "total_shares": total_shares,
+        "buy_shares": buy_shares,
+        "sell_shares": sell_shares,
+        "auction_shares": auction_shares,
+        "hidden_shares": hidden_shares,
         "trade_count": trade_count,
+        "buy_volume": buy_volume,
+        "sell_volume": sell_volume,
+        "auction_volume": auction_volume,
+        "hidden_volume": hidden_volume,
     }
