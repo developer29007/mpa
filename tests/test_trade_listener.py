@@ -2,7 +2,10 @@ import datetime
 from typing import List
 
 from book.order import Order
-from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_EXECUTION_WITH_PRICE, TRADE_TYPE_NON_CROSS, TRADE_TYPE_OPEN_CROSS
+from book.trade import (Trade, TRADE_TYPE_OPEN_CROSS,
+                        TRADE_TYPE_ORDER_BOOK as TRADE_TYPE_EXECUTION,
+                        TRADE_TYPE_ORDER_BOOK_PRICE as TRADE_TYPE_EXECUTION_WITH_PRICE,
+                        TRADE_TYPE_NOT_ON_ORDER_BOOK as TRADE_TYPE_NON_CROSS)
 from book.trade_listener import TradeListener
 from itch.itch_feed_handler import ItchFeedHandler
 

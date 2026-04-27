@@ -19,7 +19,7 @@ class TestVwapSerializationRoundTrip:
         bucket.add_trade(trade)
 
         data = _serialize_vwap(1_000_000, "AAPL", bucket)
-        ts, stock, interval_ms, vwap, volume, shares, count = _unpack_vwap(data)
+        _, ts, stock, interval_ms, vwap, volume, shares, count = _unpack_vwap(data)
 
         assert ts == 1_000_000
         assert stock == b'AAPL    '
@@ -33,7 +33,7 @@ class TestVwapSerializationRoundTrip:
         bucket = VwapBucket(1000)
 
         data = _serialize_vwap(0, "TEST", bucket)
-        _, _, _, vwap, volume, shares, count = _unpack_vwap(data)
+        _, _, _, _, vwap, volume, shares, count = _unpack_vwap(data)
 
         assert math.isnan(vwap)
         assert abs(volume - 0.0) < 1e-9
@@ -51,26 +51,26 @@ class TestVwapSerializationSize:
 class TestVwapPublisherIntegration:
     @patch('publishers.vwap_publisher.KafkaPublisher.__init__', return_value=None)
     @patch('publishers.vwap_publisher.KafkaPublisher._publish')
-    def test_on_trade_creates_calculator_and_publishes(self, mock_publish, mock_init):
+    def test_on_trade_creates_bucket(self, mock_publish, mock_init):
         publisher = VwapPublisher(
             bootstrap_servers='localhost:9092',
-            trade_date=datetime.date(2024, 1, 15),
-            bucket_intervals=[250, 1000, 5000],
+            topic='vwap',
+            interval_ms=250,
         )
 
         trade = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E", trade_date=datetime.date(2024, 1, 15))
         publisher.on_trade(trade)
 
-        assert "AAPL" in publisher.calculators
-        assert mock_publish.call_count == 3  # one per bucket
+        assert "AAPL" in publisher._buckets
+        mock_publish.assert_not_called()  # publishing is timer-driven
 
     @patch('publishers.vwap_publisher.KafkaPublisher.__init__', return_value=None)
     @patch('publishers.vwap_publisher.KafkaPublisher._publish')
-    def test_multiple_stocks_separate_calculators(self, mock_publish, mock_init):
+    def test_multiple_stocks_separate_buckets(self, mock_publish, mock_init):
         publisher = VwapPublisher(
             bootstrap_servers='localhost:9092',
-            trade_date=datetime.date(2024, 1, 15),
-            bucket_intervals=[250, 1000],
+            topic='vwap',
+            interval_ms=250,
         )
 
         trade_aapl = Trade(timestamp_ns=1_000_000, sec_id="AAPL", shares=100, price=150.0, side="B", type="E", trade_date=datetime.date(2024, 1, 15))
@@ -78,5 +78,6 @@ class TestVwapPublisherIntegration:
         publisher.on_trade(trade_aapl)
         publisher.on_trade(trade_tsla)
 
-        assert len(publisher.calculators) == 2
-        assert mock_publish.call_count == 4  # 2 buckets x 2 stocks
+        assert len(publisher._buckets) == 2
+        assert "AAPL" in publisher._buckets
+        assert "TSLA" in publisher._buckets

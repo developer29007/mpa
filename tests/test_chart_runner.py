@@ -1,7 +1,7 @@
 import datetime
 import struct
 
-from book.trade import Trade, TRADE_TYPE_EXECUTION
+from book.trade import Trade, TRADE_TYPE_ORDER_BOOK as TRADE_TYPE_EXECUTION
 from publishers.trade_publisher import _serialize_trade, TRADE_FORMAT
 from itch.chart_runner import _deserialize_trade
 

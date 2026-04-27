@@ -12,15 +12,15 @@ from publishers.trade_publisher import TRADE_FORMAT
 from web.chart_server import ChartServer
 
 
-def _deserialize_trade(payload: bytes) -> dict:
+def _deserialize_trade(payload: bytes, trade_date=None) -> dict:
     """Deserialize binary trade payload to a dict. Exact inverse of _serialize_trade."""
-    ts_ns, sec_id, shares, price, side, trade_type, exch_id, src, match_id, trade_date_int = (
+    _msg_id, ts_ns, sec_id, shares, price, side, trade_type, exch_id, src, match_id = (
         struct.unpack(TRADE_FORMAT, payload)
     )
-    year = trade_date_int // 10000
-    month = (trade_date_int % 10000) // 100
-    day = trade_date_int % 100
-    epoch_seconds = calendar.timegm((year, month, day, 0, 0, 0)) + ts_ns / 1_000_000_000
+    if trade_date is not None:
+        epoch_seconds = calendar.timegm(trade_date.timetuple()) + ts_ns / 1_000_000_000
+    else:
+        epoch_seconds = ts_ns / 1_000_000_000
     return {
         "s": sec_id.decode("ascii").strip(),
         "p": price,
@@ -86,7 +86,7 @@ def main():
             if msg_type != "T":
                 continue
             payload = data[3:]
-            trade = _deserialize_trade(payload)
+            trade = _deserialize_trade(payload, date_obj)
             if stock_filter and trade["s"] not in stock_filter:
                 continue
             server.enqueue_trade(_trade_dict_to_json(trade))

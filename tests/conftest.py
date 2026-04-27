@@ -14,4 +14,6 @@ import types
 # succeeds without the real C extension.
 _confluent_kafka_stub = types.ModuleType('confluent_kafka')
 _confluent_kafka_stub.Producer = object
+_confluent_kafka_stub.Consumer = object
+_confluent_kafka_stub.KafkaError = object
 sys.modules.setdefault('confluent_kafka', _confluent_kafka_stub)

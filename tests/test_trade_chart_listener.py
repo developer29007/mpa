@@ -3,7 +3,7 @@ import datetime
 import json
 from unittest.mock import patch, MagicMock
 
-from book.trade import Trade, TRADE_TYPE_EXECUTION
+from book.trade import Trade, TRADE_TYPE_ORDER_BOOK as TRADE_TYPE_EXECUTION
 from web.trade_chart_listener import _trade_to_json, TradeChartListener
 
 TEST_DATE = datetime.date(2024, 1, 15)

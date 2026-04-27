@@ -1,7 +1,7 @@
 import datetime
 import struct
 
-from book.trade import Trade, TRADE_TYPE_EXECUTION, TRADE_TYPE_CLOSE_CROSS
+from book.trade import Trade, TRADE_TYPE_CLOSE_CROSS, TRADE_TYPE_ORDER_BOOK as TRADE_TYPE_EXECUTION
 from publishers.trade_publisher import _serialize_trade, TRADE_FORMAT
 
 
@@ -25,7 +25,7 @@ class TestTradeSerializationRoundTrip:
             trade_date=td,
         )
         data = _serialize_trade(trade)
-        ts, sec_id, shares, price, side, ttype, exch_id, src, match_id, td_days = _unpack_trade(data)
+        _, ts, sec_id, shares, price, side, ttype, exch_id, src, match_id = _unpack_trade(data)
 
         assert ts == 1_000_000_000
         assert sec_id == b'AAPL    '
@@ -36,7 +36,6 @@ class TestTradeSerializationRoundTrip:
         assert exch_id == b'XNAS'
         assert src == b'itch    '
         assert match_id == 99999
-        assert td_days == 20240115
 
     def test_empty_optionals(self):
         trade = Trade(
@@ -49,7 +48,7 @@ class TestTradeSerializationRoundTrip:
             trade_date=datetime.date(2024, 1, 15),
         )
         data = _serialize_trade(trade)
-        ts, sec_id, shares, price, side, ttype, exch_id, src, match_id, td_days = _unpack_trade(data)
+        _, ts, sec_id, shares, price, side, ttype, exch_id, src, match_id = _unpack_trade(data)
 
         assert ts == 500
         assert sec_id == b'X       '
@@ -60,7 +59,6 @@ class TestTradeSerializationRoundTrip:
         assert exch_id == b'    '
         assert src == b'        '
         assert match_id == 0
-        assert td_days == 20240115
 
     def test_cross_trade_empty_side(self):
         trade = Trade(
@@ -76,7 +74,7 @@ class TestTradeSerializationRoundTrip:
             trade_date=datetime.date(2024, 6, 1),
         )
         data = _serialize_trade(trade)
-        _, _, _, _, side, _, _, _, _, _ = _unpack_trade(data)
+        _, _, _, _, _, side, _, _, _, _ = _unpack_trade(data)
         assert side == b' '
 
 
