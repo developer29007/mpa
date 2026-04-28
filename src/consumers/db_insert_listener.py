@@ -19,30 +19,32 @@ from util.message_id import next_id
 
 def _trade_to_dict(trade: Trade) -> dict:
     return {
-        "msg_id": next_id(),
-        "timestamp_ns": trade.timestamp_ns,
+        "msg_seq": next_id(),
+        "ts_me": trade.timestamp_ns,
         "sec_id": trade.sec_id,
+        "exch_id": trade.exch_id,
+        "src_id": trade.src,
         "shares": trade.shares,
         "price": trade.price,
         "side": trade.side,
         "trade_type": trade.type,
-        "exch_id": trade.exch_id,
-        "src": trade.src,
         "exch_match_id": trade.exch_match_id,
     }
 
 
 def _tob_to_dict(tob: TopOfBook) -> dict:
     return {
-        "msg_id": next_id(),
-        "timestamp_ns": tob.timestamp,
-        "stock": tob.name,
+        "msg_seq": next_id(),
+        "ts_me": tob.timestamp,
+        "sec_id": tob.name,
+        "exch_id": "",
+        "src_id": "",
         "bid_price": tob.bid_price,
         "bid_size": tob.bid_size,
         "ask_price": tob.ask_price,
         "ask_size": tob.ask_size,
         "last_trade_price": tob.last_trade,
-        "last_trade_timestamp_ns": tob.last_trade_timestamp,
+        "last_trade_ts_me": tob.last_trade_timestamp,
         "last_trade_shares": tob.last_trade_shares,
         "last_trade_side": tob.last_trade_side,
         "last_trade_type": tob.last_trade_type,
@@ -52,9 +54,11 @@ def _tob_to_dict(tob: TopOfBook) -> dict:
 
 def _market_event_to_dict(event: MarketEvent) -> dict:
     return {
-        "msg_id": next_id(),
-        "timestamp_ns": event.timestamp_ns,
-        "stock": event.stock,
+        "msg_seq": next_id(),
+        "ts_me": event.timestamp_ns,
+        "sec_id": event.stock,
+        "exch_id": "",
+        "src_id": "",
         "event_type": event.event_type,
         "reason": event.reason,
     }
@@ -62,9 +66,11 @@ def _market_event_to_dict(event: MarketEvent) -> dict:
 
 def _noii_to_dict(noii: Noii) -> dict:
     return {
-        "msg_id": next_id(),
-        "timestamp_ns": noii.timestamp_ns,
-        "stock": noii.stock,
+        "msg_seq": next_id(),
+        "ts_me": noii.timestamp_ns,
+        "sec_id": noii.stock,
+        "exch_id": "",
+        "src_id": "",
         "paired_shares": noii.paired_shares,
         "imbalance_shares": noii.imbalance_shares,
         "far_price": noii.far_price,
@@ -76,12 +82,14 @@ def _noii_to_dict(noii: Noii) -> dict:
     }
 
 
-def _bucket_to_vwap_dict(timestamp_ns: int, stock: str, bucket: VwapBucket) -> dict:
+def _bucket_to_vwap_dict(ts_me: int, sec_id: str, bucket: VwapBucket) -> dict:
     vwap_price = bucket.vwap_price()
     return {
-        "msg_id": next_id(),
-        "timestamp_ns": timestamp_ns,
-        "stock": stock,
+        "msg_seq": next_id(),
+        "ts_me": ts_me,
+        "sec_id": sec_id,
+        "exch_id": "",
+        "src_id": "",
         "interval_ms": bucket.interval_ms,
         "vwap_price": vwap_price if vwap_price is not None else math.nan,
         "volume_traded": bucket.volume_traded,
@@ -90,12 +98,14 @@ def _bucket_to_vwap_dict(timestamp_ns: int, stock: str, bucket: VwapBucket) -> d
     }
 
 
-def _bucket_to_trade_bucket_dict(stock: str, bucket: TradeBucket) -> dict:
+def _bucket_to_trade_bucket_dict(sec_id: str, bucket: TradeBucket) -> dict:
     vwap = bucket.vwap()
     return {
-        "msg_id": next_id(),
-        "timestamp_ns": bucket.bucket_start_ns,
-        "stock": stock,
+        "msg_seq": next_id(),
+        "ts_me": bucket.bucket_start_ns,
+        "sec_id": sec_id,
+        "exch_id": "",
+        "src_id": "",
         "interval_ms": bucket.interval_ms,
         "open": bucket.open,
         "high": bucket.high,
@@ -138,8 +148,8 @@ class _VwapTimerHelper(TimerListener):
 
     def on_timer_expired(self, time_interval: int, scheduled_time: int, time_now: int) -> None:
         publish_time = scheduled_time + time_interval
-        for stock, bucket in self._buckets.items():
-            self._vwap_buf.append(_bucket_to_vwap_dict(publish_time, stock, bucket))
+        for sec_id, bucket in self._buckets.items():
+            self._vwap_buf.append(_bucket_to_vwap_dict(publish_time, sec_id, bucket))
         TimerService.instance().add_timer(time_interval, publish_time, self)
 
 

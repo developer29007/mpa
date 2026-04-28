@@ -48,8 +48,8 @@ class TestNoiiSerializationRoundtrip(unittest.TestCase):
         noii = _make_noii()
         result = deserialize_noii(_serialize_noii(noii))
 
-        assert result["timestamp_ns"] == noii.timestamp_ns
-        assert result["stock"] == noii.stock
+        assert result["ts_me"] == noii.timestamp_ns
+        assert result["sec_id"] == noii.stock
         assert result["paired_shares"] == noii.paired_shares
         assert result["imbalance_shares"] == noii.imbalance_shares
         assert result["far_price"] == pytest.approx(noii.far_price)
@@ -76,16 +76,16 @@ class TestNoiiSerializationRoundtrip(unittest.TestCase):
         """Single-char symbols are padded to 8 bytes on the wire, stripped back on read."""
         noii = _make_noii(stock="X")
         result = deserialize_noii(_serialize_noii(noii))
-        assert result["stock"] == "X"
+        assert result["sec_id"] == "X"
 
     def test_eight_char_stock_symbol(self):
         noii = _make_noii(stock="ABCDEFGH")
         result = deserialize_noii(_serialize_noii(noii))
-        assert result["stock"] == "ABCDEFGH"
+        assert result["sec_id"] == "ABCDEFGH"
 
-    def test_msg_id_is_positive(self):
+    def test_msg_seq_is_positive(self):
         result = deserialize_noii(_serialize_noii(_make_noii()))
-        assert result["msg_id"] > 0
+        assert result["msg_seq"] > 0
 
     def test_payload_size_is_fixed(self):
         """All NOII messages must have the same byte length for stream framing."""

@@ -9,49 +9,50 @@ from publishers.noii_publisher import NOII_FORMAT
 
 
 def deserialize_market_event(payload: bytes) -> dict:
-    """Deserialize binary market event payload."""
     (
-        msg_id, timestamp_ns, stock, event_type, reason,
+        msg_seq, ts_me, sec_id, event_type, reason,
     ) = struct.unpack(MARKET_EVENT_FORMAT, payload)
     return {
-        "msg_id": msg_id,
-        "timestamp_ns": timestamp_ns,
-        "stock": stock.decode("ascii").strip(),
+        "msg_seq": msg_seq,
+        "ts_me": ts_me,
+        "sec_id": sec_id.decode("ascii").strip(),
+        "exch_id": "",
+        "src_id": "",
         "event_type": event_type.decode("ascii").strip(),
         "reason": reason.decode("ascii").strip(),
     }
 
 
 def deserialize_trade(payload: bytes) -> dict:
-    """Deserialize binary trade payload."""
     (
-        msg_id, timestamp_ns, sec_id, shares, price,
-        side, trade_type, exch_id, src, exch_match_id,
+        msg_seq, ts_me, sec_id, shares, price,
+        side, trade_type, exch_id, src_id, exch_match_id,
     ) = struct.unpack(TRADE_FORMAT, payload)
     return {
-        "msg_id": msg_id,
-        "timestamp_ns": timestamp_ns,
+        "msg_seq": msg_seq,
+        "ts_me": ts_me,
         "sec_id": sec_id.decode("ascii").strip(),
+        "exch_id": exch_id.decode("ascii").strip(),
+        "src_id": src_id.decode("ascii").strip(),
         "shares": shares,
         "price": price,
         "side": side.decode("ascii"),
         "trade_type": trade_type.decode("ascii"),
-        "exch_id": exch_id.decode("ascii").strip(),
-        "src": src.decode("ascii").strip(),
         "exch_match_id": exch_match_id,
     }
 
 
 def deserialize_vwap(payload: bytes) -> dict:
-    """Deserialize binary VWAP payload."""
     (
-        msg_id, timestamp_ns, stock, interval_ms,
+        msg_seq, ts_me, sec_id, interval_ms,
         vwap_price, volume_traded, shares_traded, trade_count,
     ) = struct.unpack(VWAP_FORMAT, payload)
     return {
-        "msg_id": msg_id,
-        "timestamp_ns": timestamp_ns,
-        "stock": stock.decode("ascii").strip(),
+        "msg_seq": msg_seq,
+        "ts_me": ts_me,
+        "sec_id": sec_id.decode("ascii").strip(),
+        "exch_id": "",
+        "src_id": "",
         "interval_ms": interval_ms,
         "vwap_price": vwap_price,
         "volume_traded": volume_traded,
@@ -61,22 +62,23 @@ def deserialize_vwap(payload: bytes) -> dict:
 
 
 def deserialize_tob(payload: bytes) -> dict:
-    """Deserialize binary TOB payload."""
     (
-        msg_id, timestamp_ns, stock, bid_price, bid_size,
-        ask_price, ask_size, last_trade_price, last_trade_timestamp_ns,
+        msg_seq, ts_me, sec_id, bid_price, bid_size,
+        ask_price, ask_size, last_trade_price, last_trade_ts_me,
         last_trade_shares, last_trade_side, last_trade_type, last_trade_match_id,
     ) = struct.unpack(TOB_FORMAT, payload)
     return {
-        "msg_id": msg_id,
-        "timestamp_ns": timestamp_ns,
-        "stock": stock.decode("ascii").strip(),
+        "msg_seq": msg_seq,
+        "ts_me": ts_me,
+        "sec_id": sec_id.decode("ascii").strip(),
+        "exch_id": "",
+        "src_id": "",
         "bid_price": bid_price,
         "bid_size": bid_size,
         "ask_price": ask_price,
         "ask_size": ask_size,
         "last_trade_price": last_trade_price,
-        "last_trade_timestamp_ns": last_trade_timestamp_ns,
+        "last_trade_ts_me": last_trade_ts_me,
         "last_trade_shares": last_trade_shares,
         "last_trade_side": last_trade_side.decode("ascii"),
         "last_trade_type": last_trade_type.decode("ascii"),
@@ -85,16 +87,17 @@ def deserialize_tob(payload: bytes) -> dict:
 
 
 def deserialize_noii(payload: bytes) -> dict:
-    """Deserialize binary NOII payload."""
     (
-        msg_id, timestamp_ns, stock, paired_shares, imbalance_shares,
+        msg_seq, ts_me, sec_id, paired_shares, imbalance_shares,
         far_price, near_price, current_reference_price,
         imbalance_direction, cross_type, price_variation_indicator,
     ) = struct.unpack(NOII_FORMAT, payload)
     return {
-        "msg_id": msg_id,
-        "timestamp_ns": timestamp_ns,
-        "stock": stock.decode("ascii").strip(),
+        "msg_seq": msg_seq,
+        "ts_me": ts_me,
+        "sec_id": sec_id.decode("ascii").strip(),
+        "exch_id": "",
+        "src_id": "",
         "paired_shares": paired_shares,
         "imbalance_shares": imbalance_shares,
         "far_price": far_price,
@@ -107,17 +110,18 @@ def deserialize_noii(payload: bytes) -> dict:
 
 
 def deserialize_trade_bucket(payload: bytes) -> dict:
-    """Deserialize binary trade-bucket payload."""
     (
-        msg_id, timestamp_ns, stock, interval_ms,
+        msg_seq, ts_me, sec_id, interval_ms,
         open_, high, low, close, notional, vwap,
         total_shares, buy_shares, sell_shares, auction_shares, hidden_shares, trade_count,
         buy_volume, sell_volume, auction_volume, hidden_volume,
     ) = struct.unpack(TRADE_BUCKET_FORMAT, payload)
     return {
-        "msg_id": msg_id,
-        "timestamp_ns": timestamp_ns,
-        "stock": stock.decode("ascii").strip(),
+        "msg_seq": msg_seq,
+        "ts_me": ts_me,
+        "sec_id": sec_id.decode("ascii").strip(),
+        "exch_id": "",
+        "src_id": "",
         "interval_ms": interval_ms,
         "open": open_,
         "high": high,

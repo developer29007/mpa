@@ -13,68 +13,74 @@ def _nan_to_none(value: float):
 
 TRADE_INSERT = """
     INSERT INTO trades (
-        trade_date, msg_id, timestamp_ns, sec_id, shares, price,
-        side, trade_type, exch_id, src, exch_match_id
+        trade_date, msg_seq, ts_me, sec_id, exch_id, src_id,
+        shares, price, side, trade_type, exch_match_id
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(sec_id)s, %(shares)s, %(price)s,
-        %(side)s, %(trade_type)s, %(exch_id)s, %(src)s, %(exch_match_id)s
-    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+        %(trade_date)s, %(msg_seq)s, %(ts_me)s, %(sec_id)s, %(exch_id)s, %(src_id)s,
+        %(shares)s, %(price)s, %(side)s, %(trade_type)s, %(exch_match_id)s
+    ) ON CONFLICT (msg_seq, trade_date) DO NOTHING
 """
 
 VWAP_INSERT = """
     INSERT INTO vwap (
-        trade_date, msg_id, timestamp_ns, stock, interval_ms, vwap_price,
-        volume_traded, shares_traded, trade_count
+        trade_date, msg_seq, ts_me, sec_id, exch_id, src_id,
+        interval_ms, vwap_price, volume_traded, shares_traded, trade_count
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(stock)s, %(interval_ms)s, %(vwap_price)s,
-        %(volume_traded)s, %(shares_traded)s, %(trade_count)s
-    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+        %(trade_date)s, %(msg_seq)s, %(ts_me)s, %(sec_id)s, %(exch_id)s, %(src_id)s,
+        %(interval_ms)s, %(vwap_price)s, %(volume_traded)s, %(shares_traded)s, %(trade_count)s
+    ) ON CONFLICT (msg_seq, trade_date) DO NOTHING
 """
 
 TOB_INSERT = """
     INSERT INTO tob (
-        trade_date, msg_id, timestamp_ns, stock, bid_price, bid_size,
-        ask_price, ask_size, last_trade_price, last_trade_timestamp_ns,
+        trade_date, msg_seq, ts_me, sec_id, exch_id, src_id,
+        bid_price, bid_size, ask_price, ask_size,
+        last_trade_price, last_trade_ts_me,
         last_trade_shares, last_trade_side, last_trade_type, last_trade_match_id
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(stock)s, %(bid_price)s, %(bid_size)s,
-        %(ask_price)s, %(ask_size)s, %(last_trade_price)s, %(last_trade_timestamp_ns)s,
+        %(trade_date)s, %(msg_seq)s, %(ts_me)s, %(sec_id)s, %(exch_id)s, %(src_id)s,
+        %(bid_price)s, %(bid_size)s, %(ask_price)s, %(ask_size)s,
+        %(last_trade_price)s, %(last_trade_ts_me)s,
         %(last_trade_shares)s, %(last_trade_side)s, %(last_trade_type)s, %(last_trade_match_id)s
-    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+    ) ON CONFLICT (msg_seq, trade_date) DO NOTHING
 """
 
 NOII_INSERT = """
     INSERT INTO noii (
-        trade_date, msg_id, timestamp_ns, stock, paired_shares, imbalance_shares,
-        imbalance_direction, far_price, near_price, current_reference_price,
+        trade_date, msg_seq, ts_me, sec_id, exch_id, src_id,
+        paired_shares, imbalance_shares, imbalance_direction,
+        far_price, near_price, current_reference_price,
         cross_type, price_variation_indicator
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(stock)s, %(paired_shares)s, %(imbalance_shares)s,
-        %(imbalance_direction)s, %(far_price)s, %(near_price)s, %(current_reference_price)s,
+        %(trade_date)s, %(msg_seq)s, %(ts_me)s, %(sec_id)s, %(exch_id)s, %(src_id)s,
+        %(paired_shares)s, %(imbalance_shares)s, %(imbalance_direction)s,
+        %(far_price)s, %(near_price)s, %(current_reference_price)s,
         %(cross_type)s, %(price_variation_indicator)s
-    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+    ) ON CONFLICT (msg_seq, trade_date) DO NOTHING
 """
 
 MARKET_EVENT_INSERT = """
     INSERT INTO market_events (
-        trade_date, msg_id, timestamp_ns, event_type, stock, reason
+        trade_date, msg_seq, ts_me, sec_id, exch_id, src_id,
+        event_type, reason
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(event_type)s, %(stock)s, %(reason)s
-    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+        %(trade_date)s, %(msg_seq)s, %(ts_me)s, %(sec_id)s, %(exch_id)s, %(src_id)s,
+        %(event_type)s, %(reason)s
+    ) ON CONFLICT (msg_seq, trade_date) DO NOTHING
 """
 
 TRADE_BUCKET_INSERT = """
     INSERT INTO trade_buckets (
-        trade_date, msg_id, timestamp_ns, stock, interval_ms,
-        open, high, low, close, notional, vwap,
+        trade_date, msg_seq, ts_me, sec_id, exch_id, src_id,
+        interval_ms, open, high, low, close, notional, vwap,
         total_shares, buy_shares, sell_shares, auction_shares, hidden_shares, trade_count,
         buy_volume, sell_volume, auction_volume, hidden_volume
     ) VALUES (
-        %(trade_date)s, %(msg_id)s, %(timestamp_ns)s, %(stock)s, %(interval_ms)s,
-        %(open)s, %(high)s, %(low)s, %(close)s, %(notional)s, %(vwap)s,
+        %(trade_date)s, %(msg_seq)s, %(ts_me)s, %(sec_id)s, %(exch_id)s, %(src_id)s,
+        %(interval_ms)s, %(open)s, %(high)s, %(low)s, %(close)s, %(notional)s, %(vwap)s,
         %(total_shares)s, %(buy_shares)s, %(sell_shares)s, %(auction_shares)s, %(hidden_shares)s, %(trade_count)s,
         %(buy_volume)s, %(sell_volume)s, %(auction_volume)s, %(hidden_volume)s
-    ) ON CONFLICT (msg_id, trade_date) DO NOTHING
+    ) ON CONFLICT (msg_seq, trade_date) DO NOTHING
 """
 
 
